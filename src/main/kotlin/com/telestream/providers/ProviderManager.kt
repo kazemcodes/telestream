@@ -13,6 +13,8 @@ object ProviderManager {
     // Thread-safe in-memory cache
     private val searchCache = ConcurrentHashMap<String, List<SearchResponse>>()
     private val loadCache = ConcurrentHashMap<String, LoadResponse>()
+    private val popularCache = ConcurrentHashMap<String, List<SearchResponse>>()
+    private val latestCache = ConcurrentHashMap<String, List<SearchResponse>>()
 
     init {
         register(KissKH())
@@ -25,42 +27,91 @@ object ProviderManager {
     }
 
     fun getProvider(name: String): MainAPI? {
-        val p = providers.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return null
+        val p = providers.firstOrNull { 
+            it.name.equals(name, ignoreCase = true) ||
+            it.name.startsWith(name, ignoreCase = true) ||
+            name.startsWith(it.name, ignoreCase = true)
+        } ?: return null
         if (p.isNsfw && !Database.isNsfwEnabled()) return null
         return p
+    }
+
+    fun getProvidersByFilter(filter: String = "all"): List<MainAPI> {
+        val nsfwAllowed = Database.isNsfwEnabled()
+        val available = providers.filter { !it.isNsfw || nsfwAllowed }
+        return when (filter.lowercase()) {
+            "fa", "persian" -> available.filter { it.lang == "fa" || it.name.contains("ava", ignoreCase = true) }
+            "ar", "arabic" -> available.filter { it.lang == "ar" || it.name.contains("fasel", ignoreCase = true) }
+            "anime", "asian" -> available.filter {
+                it.name.contains("kiss", ignoreCase = true) ||
+                it.supportedTypes.contains(TvType.Anime) ||
+                it.supportedTypes.contains(TvType.AsianDrama)
+            }
+            "en", "english" -> available.filter { it.lang == "en" }
+            else -> available
+        }
     }
 
     fun isPersianText(text: String): Boolean {
         return text.any { it in '\u0600'..'\u06FF' || it in '\uFB50'..'\uFDFF' || it in '\uFE70'..'\uFEFF' }
     }
 
-    suspend fun search(query: String): List<SearchResponse> = coroutineScope {
+    suspend fun searchInProvider(providerName: String, query: String): List<SearchResponse> {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isBlank()) return emptyList()
+
+        val provider = getProvider(providerName) ?: return emptyList()
         val nsfwAllowed = Database.isNsfwEnabled()
-        val cacheKey = "${query.trim().lowercase()}:nsfw=$nsfwAllowed"
-        searchCache[cacheKey]?.let { return@coroutineScope it }
+        val cacheKey = "${provider.name.lowercase()}:${trimmedQuery.lowercase()}:nsfw=$nsfwAllowed"
+        searchCache[cacheKey]?.let { return it }
 
-        val isFa = isPersianText(query)
-        val activeProviders = providers.filter { !it.isNsfw || nsfwAllowed }
-
-        val targetProviders = if (isFa) {
-            activeProviders.filter { it.lang == "fa" || it.lang == "multi" }.ifEmpty { activeProviders }
-        } else {
-            activeProviders.filter { it.lang == "en" || it.lang == "multi" }.ifEmpty { activeProviders }
+        val results = try {
+            provider.search(trimmedQuery).filter { it.type != TvType.NSFW || nsfwAllowed }
+        } catch (e: Exception) {
+            emptyList()
         }
 
-        val deferreds = targetProviders.map { provider ->
-            async {
-                try {
-                    provider.search(query).filter { it.type != TvType.NSFW || nsfwAllowed }
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            }
-        }
-
-        val results = deferreds.awaitAll().flatten()
         searchCache[cacheKey] = results
-        results
+        return results
+    }
+
+    suspend fun getPopular(providerName: String, page: Int = 1): List<SearchResponse> {
+        val provider = getProvider(providerName) ?: return emptyList()
+        val nsfwAllowed = Database.isNsfwEnabled()
+        val cacheKey = "${provider.name.lowercase()}:page=$page:nsfw=$nsfwAllowed"
+        popularCache[cacheKey]?.let { return it }
+
+        val results = try {
+            provider.getPopular(page).filter { it.type != TvType.NSFW || nsfwAllowed }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (results.isNotEmpty()) {
+            popularCache[cacheKey] = results
+        }
+        return results
+    }
+
+    suspend fun getLatest(providerName: String, page: Int = 1): List<SearchResponse> {
+        val provider = getProvider(providerName) ?: return emptyList()
+        val nsfwAllowed = Database.isNsfwEnabled()
+        val cacheKey = "${provider.name.lowercase()}:page=$page:nsfw=$nsfwAllowed"
+        latestCache[cacheKey]?.let { return it }
+
+        val results = try {
+            provider.getLatest(page).filter { it.type != TvType.NSFW || nsfwAllowed }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (results.isNotEmpty()) {
+            latestCache[cacheKey] = results
+        }
+        return results
+    }
+
+    @Deprecated("Global multi-source search is disabled. Use searchInProvider instead.", level = DeprecationLevel.ERROR)
+    suspend fun search(query: String): List<SearchResponse> {
+        throw UnsupportedOperationException("Global multi-source search is strictly disabled. Use searchInProvider(providerName, query) instead.")
     }
 
     suspend fun load(providerName: String, url: String): LoadResponse? {

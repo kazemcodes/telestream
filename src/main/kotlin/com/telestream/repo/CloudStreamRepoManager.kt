@@ -212,6 +212,68 @@ object CloudStreamRepoManager {
     fun getAllPlugins(): List<PluginMetadata> = cachedPlugins
 
     /**
+     * List all distinct repository names available.
+     */
+    fun getRepositoryNames(): List<String> {
+        val synced = cachedPlugins.mapNotNull { it.repositoryName }.distinct().filter { it.isNotBlank() }
+        val all = mutableListOf("Built-in Sources")
+        all.addAll(synced)
+        return all.distinct()
+    }
+
+    /**
+     * List all distinct languages for a specific repository.
+     */
+    fun getLanguagesForRepo(repoName: String): List<String> {
+        if (repoName.equals("Built-in Sources", ignoreCase = true) || repoName.equals("builtin", ignoreCase = true)) {
+            return listOf("all", "fa", "en", "ar")
+        }
+        val langs = cachedPlugins.filter { it.repositoryName.equals(repoName, ignoreCase = true) }
+            .mapNotNull { it.language?.lowercase()?.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+        return listOf("all") + langs
+    }
+
+    /**
+     * Get plugins for a specific repository and language filter.
+     */
+    fun getPluginsForRepo(repoName: String, lang: String? = null): List<PluginMetadata> {
+        if (repoName.equals("Built-in Sources", ignoreCase = true) || repoName.equals("builtin", ignoreCase = true)) {
+            val builtins = listOf(
+                PluginMetadata(
+                    name = "AvaMovie (فارسی)",
+                    description = "Persian Movies & Series (avamovie3.info)",
+                    language = "fa",
+                    repositoryName = "Built-in Sources"
+                ),
+                PluginMetadata(
+                    name = "KissKH",
+                    description = "Asian Drama & Anime (kisskh.id)",
+                    language = "en",
+                    repositoryName = "Built-in Sources"
+                ),
+                PluginMetadata(
+                    name = "FaselHD (العربية)",
+                    description = "Arabic Movies & Series (faselhdx.bid)",
+                    language = "ar",
+                    repositoryName = "Built-in Sources"
+                )
+            )
+            return if (lang == null || lang == "all") builtins else builtins.filter { it.language.equals(lang, ignoreCase = true) }
+        }
+
+        return cachedPlugins.filter { p ->
+            val matchRepo = p.repositoryName.equals(repoName, ignoreCase = true)
+            val matchLang = if (lang != null && lang != "all") {
+                p.language.equals(lang, ignoreCase = true)
+            } else true
+            matchRepo && matchLang
+        }
+    }
+
+    /**
      * Get summary of total repositories and plugins loaded.
      */
     fun getSummary(): Map<String, Any> {

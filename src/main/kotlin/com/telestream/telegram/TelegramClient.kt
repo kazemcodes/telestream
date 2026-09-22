@@ -1,10 +1,14 @@
 package com.telestream.telegram
 
+import com.telestream.config.Config
 import io.ktor.client.*
 import io.ktor.client.call.*
+import io.ktor.client.engine.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
@@ -15,17 +19,30 @@ import org.slf4j.LoggerFactory
 
 class TelegramClient(private val botToken: String) {
     private val logger = LoggerFactory.getLogger(TelegramClient::class.java)
-    private val baseUrl = "https://api.telegram.org/bot$botToken"
+    private val apiBase = Config.telegramApiUrl.trimEnd('/')
+    private val baseUrl = "$apiBase/bot$botToken"
 
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
-        encodeDefaults = true
+        encodeDefaults = false
+        explicitNulls = false
     }
 
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(json)
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 60_000L
+            socketTimeoutMillis = 60_000L
+            connectTimeoutMillis = 30_000L
+        }
+        engine {
+            requestTimeout = 60_000L
+            Config.telegramProxy?.let { proxyUrl ->
+                proxy = ProxyBuilder.http(Url(proxyUrl))
+            }
         }
     }
 
@@ -34,6 +51,10 @@ class TelegramClient(private val botToken: String) {
             val response = client.get("$baseUrl/getUpdates") {
                 parameter("offset", offset)
                 parameter("timeout", timeout)
+                timeout {
+                    requestTimeoutMillis = (timeout + 30) * 1000L
+                    socketTimeoutMillis = (timeout + 30) * 1000L
+                }
             }
             val tgResp: TelegramResponse<List<Update>> = response.body()
             tgResp.result ?: emptyList()
@@ -58,9 +79,26 @@ class TelegramClient(private val botToken: String) {
                     put("reply_markup", json.encodeToJsonElement(replyMarkup))
                 }
             }
-            client.post("$baseUrl/sendMessage") {
+            val res = client.post("$baseUrl/sendMessage") {
                 contentType(ContentType.Application.Json)
                 setBody(payload.toString())
+            }
+            if (!res.status.isSuccess()) {
+                val errorBody = res.bodyAsText()
+                logger.error("Error sending message to $chatId [HTTP ${res.status.value}]: $errorBody")
+                if (errorBody.contains("can't parse entities") || errorBody.contains("parse")) {
+                    client.post("$baseUrl/sendMessage") {
+                        contentType(ContentType.Application.Json)
+                        val fallback = buildJsonObject {
+                            put("chat_id", chatId)
+                            put("text", text.replace("*", "").replace("_", "").replace("`", ""))
+                            if (replyMarkup != null) {
+                                put("reply_markup", json.encodeToJsonElement(replyMarkup))
+                            }
+                        }
+                        setBody(fallback.toString())
+                    }
+                }
             }
         } catch (e: Exception) {
             logger.error("Error sending message to $chatId: ${e.message}")
@@ -103,8 +141,8 @@ class TelegramClient(private val botToken: String) {
         text: String,
         replyMarkup: InlineKeyboardMarkup? = null,
         parseMode: String = "Markdown"
-    ) {
-        try {
+    ): Boolean {
+        return try {
             val payload = buildJsonObject {
                 put("chat_id", chatId)
                 put("message_id", messageId)
@@ -114,12 +152,42 @@ class TelegramClient(private val botToken: String) {
                     put("reply_markup", json.encodeToJsonElement(replyMarkup))
                 }
             }
-            client.post("$baseUrl/editMessageText") {
+            val res = client.post("$baseUrl/editMessageText") {
                 contentType(ContentType.Application.Json)
                 setBody(payload.toString())
             }
+            res.status.isSuccess()
         } catch (e: Exception) {
             logger.error("Error editing message $messageId: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun editMessageCaption(
+        chatId: Long,
+        messageId: Long,
+        caption: String,
+        replyMarkup: InlineKeyboardMarkup? = null,
+        parseMode: String = "Markdown"
+    ): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("chat_id", chatId)
+                put("message_id", messageId)
+                put("caption", caption)
+                put("parse_mode", parseMode)
+                if (replyMarkup != null) {
+                    put("reply_markup", json.encodeToJsonElement(replyMarkup))
+                }
+            }
+            val res = client.post("$baseUrl/editMessageCaption") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            logger.error("Error editing caption $messageId: ${e.message}")
+            false
         }
     }
 
@@ -155,6 +223,31 @@ class TelegramClient(private val botToken: String) {
             res.status.isSuccess()
         } catch (e: Exception) {
             logger.debug("Failed setting chat menu button: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun setMyCommands(commands: List<BotCommand>, languageCode: String? = null): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("commands", json.encodeToJsonElement(commands))
+                if (languageCode != null) {
+                    put("language_code", languageCode)
+                }
+            }
+            val res = client.post("$baseUrl/setMyCommands") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            if (res.status.isSuccess()) {
+                logger.info("Successfully registered ${commands.size} bot commands (lang: ${languageCode ?: "default"})")
+                true
+            } else {
+                logger.error("Failed to setMyCommands [HTTP ${res.status.value}]: ${res.bodyAsText()}")
+                false
+            }
+        } catch (e: Exception) {
+            logger.error("Error setting bot commands: ${e.message}")
             false
         }
     }

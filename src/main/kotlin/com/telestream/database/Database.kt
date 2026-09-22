@@ -31,10 +31,14 @@ object Database {
                     CREATE TABLE IF NOT EXISTS users (
                         user_id INTEGER PRIMARY KEY,
                         language TEXT DEFAULT 'en',
+                        active_source TEXT DEFAULT 'AvaMovie',
                         joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                     """.trimIndent()
                 )
+                try {
+                    stmt.execute("ALTER TABLE users ADD COLUMN active_source TEXT DEFAULT 'AvaMovie';")
+                } catch (ignored: Exception) {}
                 stmt.execute(
                     """
                     CREATE TABLE IF NOT EXISTS bookmarks (
@@ -54,6 +58,17 @@ object Database {
                     CREATE TABLE IF NOT EXISTS app_settings (
                         key TEXT PRIMARY KEY,
                         value TEXT
+                    );
+                    """.trimIndent()
+                )
+                stmt.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_sources (
+                        user_id INTEGER,
+                        source_name TEXT,
+                        is_enabled INTEGER DEFAULT 1,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, source_name)
                     );
                     """.trimIndent()
                 )
@@ -84,6 +99,135 @@ object Database {
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setLong(1, userId)
                 stmt.setString(2, language)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    val BUILTIN_SOURCES = listOf("AvaMovie (فارسی)", "KissKH", "FaselHD (العربية)")
+
+    fun isSourceEnabled(userId: Long, sourceName: String): Boolean {
+        DriverManager.getConnection(url).use { conn ->
+            val sql = "SELECT is_enabled FROM user_sources WHERE user_id = ? AND source_name = ?"
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                stmt.setString(2, sourceName)
+                val rs = stmt.executeQuery()
+                if (rs.next()) {
+                    return rs.getInt("is_enabled") == 1
+                }
+            }
+        }
+        // Default: Built-in sources are enabled, repository extensions are disabled
+        return BUILTIN_SOURCES.any {
+            it.equals(sourceName, ignoreCase = true) ||
+            it.startsWith(sourceName, ignoreCase = true) ||
+            sourceName.startsWith(it, ignoreCase = true)
+        }
+    }
+
+    fun setSourceEnabled(userId: Long, sourceName: String, enabled: Boolean) {
+        DriverManager.getConnection(url).use { conn ->
+            val sql = """
+                INSERT INTO user_sources (user_id, source_name, is_enabled) VALUES (?, ?, ?)
+                ON CONFLICT(user_id, source_name) DO UPDATE SET is_enabled = excluded.is_enabled, updated_at = CURRENT_TIMESTAMP
+            """.trimIndent()
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                stmt.setString(2, sourceName)
+                stmt.setInt(3, if (enabled) 1 else 0)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    fun toggleSourceEnabled(userId: Long, sourceName: String): Boolean {
+        val current = isSourceEnabled(userId, sourceName)
+        val newStatus = !current
+        setSourceEnabled(userId, sourceName, newStatus)
+        return newStatus
+    }
+
+    fun getEnabledSources(userId: Long): List<String> {
+        val enabledSet = mutableSetOf<String>()
+        // 1. Add default built-in sources unless explicitly disabled in DB
+        for (src in BUILTIN_SOURCES) {
+            if (isSourceEnabled(userId, src)) {
+                enabledSet.add(src)
+            }
+        }
+
+        // 2. Query explicitly enabled sources from DB
+        DriverManager.getConnection(url).use { conn ->
+            val sql = "SELECT source_name FROM user_sources WHERE user_id = ? AND is_enabled = 1"
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                val rs = stmt.executeQuery()
+                while (rs.next()) {
+                    val s = rs.getString("source_name")
+                    if (!s.isNullOrBlank()) {
+                        enabledSet.add(s)
+                    }
+                }
+            }
+        }
+        return enabledSet.toList()
+    }
+
+    fun setSourcesBulk(userId: Long, sourceNames: List<String>, enabled: Boolean) {
+        DriverManager.getConnection(url).use { conn ->
+            conn.autoCommit = false
+            try {
+                val sql = """
+                    INSERT INTO user_sources (user_id, source_name, is_enabled) VALUES (?, ?, ?)
+                    ON CONFLICT(user_id, source_name) DO UPDATE SET is_enabled = excluded.is_enabled, updated_at = CURRENT_TIMESTAMP
+                """.trimIndent()
+                conn.prepareStatement(sql).use { stmt ->
+                    for (name in sourceNames) {
+                        stmt.setLong(1, userId)
+                        stmt.setString(2, name)
+                        stmt.setInt(3, if (enabled) 1 else 0)
+                        stmt.addBatch()
+                    }
+                    stmt.executeBatch()
+                }
+                conn.commit()
+            } catch (e: Exception) {
+                conn.rollback()
+                throw e
+            } finally {
+                conn.autoCommit = true
+            }
+        }
+    }
+
+    fun getUserSource(userId: Long): String {
+        DriverManager.getConnection(url).use { conn ->
+            val sql = "SELECT active_source FROM users WHERE user_id = ?"
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                val rs = stmt.executeQuery()
+                if (rs.next()) {
+                    val src = rs.getString("active_source")
+                    if (!src.isNullOrBlank() && isSourceEnabled(userId, src)) {
+                        return src
+                    }
+                }
+            }
+        }
+        val enabled = getEnabledSources(userId)
+        return enabled.firstOrNull() ?: "AvaMovie (فارسی)"
+    }
+
+    fun setUserSource(userId: Long, source: String) {
+        DriverManager.getConnection(url).use { conn ->
+            val sql = """
+                INSERT INTO users (user_id, active_source) VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET active_source = excluded.active_source
+            """.trimIndent()
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                stmt.setString(2, source)
                 stmt.executeUpdate()
             }
         }

@@ -1,17 +1,57 @@
 package com.telestream.config
 
+import java.io.File
+
 object Config {
-    val botToken: String = System.getenv("BOT_TOKEN")?.trim() ?: ""
-    val port: Int = System.getenv("PORT")?.toIntOrNull() ?: 7860
+    private val envMap: Map<String, String> by lazy {
+        val map = mutableMapOf<String, String>()
+        val candidates = listOf(
+            File(".env"),
+            File(System.getProperty("user.dir", "."), ".env")
+        )
+        val envFile = candidates.firstOrNull { it.exists() && it.isFile }
+        if (envFile != null) {
+            envFile.forEachLine { rawLine ->
+                val line = rawLine.trim()
+                if (line.isNotEmpty() && !line.startsWith("#")) {
+                    val cleanLine = if (line.startsWith("export ")) line.removePrefix("export ").trim() else line
+                    if (cleanLine.contains("=")) {
+                        val key = cleanLine.substringBefore("=").trim()
+                        var value = cleanLine.substringAfter("=").trim()
+                        if ((value.startsWith("\"") && value.endsWith("\"")) ||
+                            (value.startsWith("'") && value.endsWith("'"))) {
+                            value = value.substring(1, value.length - 1)
+                        }
+                        if (key.isNotEmpty()) {
+                            map[key] = value
+                        }
+                    }
+                }
+            }
+        }
+        map
+    }
+
+    private fun get(key: String): String? {
+        val sys = System.getenv(key)?.trim()
+        if (!sys.isNullOrEmpty()) return sys
+        return envMap[key]?.trim()?.ifEmpty { null }
+    }
+
+    val botToken: String = get("BOT_TOKEN") ?: ""
+    val port: Int = get("PORT")?.toIntOrNull() ?: 7860
+
+    // Telegram API Endpoint & Proxy
+    val telegramApiUrl: String = get("TELEGRAM_API_URL") ?: "https://api.telegram.org"
+    val telegramProxy: String? = get("TELEGRAM_PROXY") ?: get("HTTPS_PROXY") ?: get("HTTP_PROXY")
 
     // Public WebApp URL (supports Hugging Face SPACE_HOST or custom domain)
-    val webAppUrl: String = System.getenv("WEBAPP_URL")?.trim()
-        ?.ifBlank { null }
-        ?: System.getenv("SPACE_HOST")?.let { "https://$it" }
+    val webAppUrl: String = get("WEBAPP_URL")
+        ?: get("SPACE_HOST")?.let { "https://$it" }
         ?: "http://localhost:$port"
 
     // Admin user IDs (comma separated, e.g. "12345678,87654321")
-    val adminIds: Set<Long> = System.getenv("ADMIN_IDS")
+    val adminIds: Set<Long> = get("ADMIN_IDS")
         ?.split(",")
         ?.mapNotNull { it.trim().toLongOrNull() }
         ?.toSet() ?: emptySet()
@@ -22,19 +62,15 @@ object Config {
     }
 
     // Crypto donation wallet addresses
-    val usdtTrc20: String = System.getenv("DONATION_USDT_TRC20")?.trim()
-        ?.ifBlank { null }
+    val usdtTrc20: String = get("DONATION_USDT_TRC20")
         ?: "TQn9Y2khEsLJW1ChVWFMSMeSTow5KaxnSE" // Placeholder / Default
 
-    val tonWallet: String = System.getenv("DONATION_TON")?.trim()
-        ?.ifBlank { null }
+    val tonWallet: String = get("DONATION_TON")
         ?: "UQDP14pSjV1k8L0Fj8d2p7k8XqZ7YjB7p9" // Placeholder / Default
 
-    val btcWallet: String = System.getenv("DONATION_BTC")?.trim()
-        ?.ifBlank { null }
+    val btcWallet: String = get("DONATION_BTC")
         ?: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" // Placeholder / Default
 
-    val ethWallet: String = System.getenv("DONATION_ETH")?.trim()
-        ?.ifBlank { null }
+    val ethWallet: String = get("DONATION_ETH")
         ?: "0x71C...YourEthAddressHere"
 }

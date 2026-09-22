@@ -133,16 +133,57 @@ java -jar build/libs/telestream-all.jar
 
 ## 🤖 Bot Commands & Controls
 
+### BotFather Setup Format (Copy & Paste to @BotFather `/setcommands`)
+
+**English / Default:**
+```text
+start - Main menu & dashboard
+sources - Choose active source provider
+enabled_sources - View all enabled sources
+manage_sources - Manage & toggle sources
+search - Search in active source
+bookmarks - View saved bookmarks
+language - Change language
+ping - Check bot status
+donate - Support & donate
+app - Launch TeleStream Mini App
+```
+
+**Persian / فارسی (Optional for `fa` language in BotFather):**
+```text
+start - منوی اصلی و داشبورد
+sources - انتخاب منبع فیلم و سریال
+enabled_sources - سورس‌های فعال من
+manage_sources - مدیریت و فعال‌سازی سورس‌ها
+search - جستجو در منبع فعال
+bookmarks - فیلم‌ها و سریال‌های نشان‌شده
+language - تغییر زبان / Change Language
+ping - وضعیت آنلاین ربات
+donate - حمایت مالی از ربات
+app - اجرای مینی‌اپ تله‌استریم
+```
+
+---
+
+### Command Overview
+
 | Command | Access | Description |
 | :--- | :--- | :--- |
-| `/start` | Public | Welcome banner & language picker (English / فارسی) |
-| `/donate` | Public | Show crypto donation addresses (USDT, TON, BTC, ETH) |
-| `/bookmarks` | Public | View and manage saved movies/shows |
-| `/repos` | Public | View synced CloudStream repositories & plugins |
-| `/admin` | Admin | Interactive dashboard (stats, memory, NSFW toggle) |
-| `/nsfw <on\|off>` | Admin | Enable or restrict NSFW content across all scrapers |
-| `/sync` | Admin | Re-fetch extension lists from `cloudstreamrepo.com` |
-| `/addrepo <url>` | Admin | Fetch and index a custom repository URL |
+| `/start` | Public | 🎬 Main menu, dashboard, and quick navigation |
+| `/sources` | Public | 📡 Select active source provider for search |
+| `/enabled_sources` | Public | 📋 View your currently enabled sources |
+| `/manage_sources` | Public | ⚙️ 3-Step manager to enable/disable sources (Provider &rarr; Lang &rarr; Toggle) |
+| `/search [title]` | Public | 🔍 Search movies & series in your active source |
+| `/bookmarks` | Public | ⭐ View and manage saved movies/shows |
+| `/language` | Public | 🌐 Switch language (English / فارسی) |
+| `/ping` | Public | 🏓 Check bot latency and online status |
+| `/donate` | Public | 💎 Show crypto donation addresses (USDT, TON, BTC, ETH) |
+| `/app` | Public | 🚀 Launch TeleStream Mini App (WebUI) |
+| `/repos` | Public | 📦 View synced CloudStream repositories & plugins |
+| `/admin` | Admin | 📊 Interactive dashboard (stats, memory, NSFW toggle) |
+| `/nsfw <on\|off>` | Admin | 🔞 Enable or restrict adult content across scrapers |
+| `/sync` | Admin | 🔄 Re-fetch extension lists from `cloudstreamrepo.com` |
+| `/addrepo <url>` | Admin | ➕ Fetch and index a custom repository URL |
 
 ---
 

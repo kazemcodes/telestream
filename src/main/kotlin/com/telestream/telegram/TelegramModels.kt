@@ -81,3 +81,15 @@ data class SetChatMenuButtonRequest(
     @SerialName("menu_button") val menuButton: MenuButton
 )
 
+@Serializable
+data class BotCommand(
+    val command: String,
+    val description: String
+)
+
+@Serializable
+data class SetMyCommandsRequest(
+    val commands: List<BotCommand>,
+    @SerialName("language_code") val languageCode: String? = null
+)
+

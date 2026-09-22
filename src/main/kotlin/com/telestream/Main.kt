@@ -5,6 +5,7 @@ import com.telestream.bot.BotRunner
 import com.telestream.config.Config
 import com.telestream.database.Database
 import com.telestream.providers.ProviderManager
+import com.telestream.telegram.BotCommand
 import com.telestream.telegram.MenuButton
 import com.telestream.telegram.TelegramClient
 import com.telestream.telegram.WebAppInfo
@@ -75,15 +76,26 @@ fun main(): Unit = runBlocking {
                 call.respondText(mapper.writeValueAsString(map), ContentType.Application.Json)
             }
 
-            // API: Real-time Search
+            // API: Sources List
+            get("/api/sources") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                val filter = call.request.queryParameters["filter"] ?: "all"
+                val list = ProviderManager.getProvidersByFilter(filter).map {
+                    mapOf("name" to it.name, "lang" to it.lang)
+                }
+                call.respondText(mapper.writeValueAsString(list), ContentType.Application.Json)
+            }
+
+            // API: Source-Specific Search
             get("/api/search") {
                 call.response.headers.append("Access-Control-Allow-Origin", "*")
                 val query = call.request.queryParameters["q"] ?: ""
+                val provider = call.request.queryParameters["provider"] ?: "AvaMovie"
                 if (query.isBlank()) {
                     call.respondText("[]", ContentType.Application.Json)
                     return@get
                 }
-                val results = ProviderManager.search(query)
+                val results = ProviderManager.searchInProvider(provider, query)
                 call.respondText(mapper.writeValueAsString(results), ContentType.Application.Json)
             }
 
@@ -150,6 +162,41 @@ fun main(): Unit = runBlocking {
                 } catch (e: Exception) {
                     logger.debug("Failed setting chat menu button: ${e.message}")
                 }
+            }
+        }
+
+        // Register Telegram Bot Command Menu for default and Persian
+        launch {
+            try {
+                val defaultCommands = listOf(
+                    BotCommand("start", "🎬 Main Menu & Dashboard"),
+                    BotCommand("popular", "🔥 Popular & Trending Movies/Series"),
+                    BotCommand("latest", "🆕 Latest Releases"),
+                    BotCommand("search", "🔍 Search in Active Source"),
+                    BotCommand("sources", "📡 Choose Source Provider"),
+                    BotCommand("enabled_sources", "📋 View Enabled Sources"),
+                    BotCommand("manage_sources", "⚙️ Manage / Toggle Sources"),
+                    BotCommand("bookmarks", "⭐ Saved Bookmarks"),
+                    BotCommand("language", "🌐 Change Language / تغییر زبان"),
+                    BotCommand("ping", "🏓 Check Bot Status")
+                )
+                client.setMyCommands(defaultCommands)
+
+                val faCommands = listOf(
+                    BotCommand("start", "🎬 منوی اصلی و داشبورد"),
+                    BotCommand("popular", "🔥 فیلم‌ها و سریال‌های محبوب و داغ"),
+                    BotCommand("latest", "🆕 جدیدترین فیلم‌ها و سریال‌ها"),
+                    BotCommand("search", "🔍 جستجو در منبع فعال"),
+                    BotCommand("sources", "📡 انتخاب منبع فیلم و سریال"),
+                    BotCommand("enabled_sources", "📋 سورس‌های فعال من"),
+                    BotCommand("manage_sources", "⚙️ مدیریت و فعال‌سازی سورس‌ها"),
+                    BotCommand("bookmarks", "⭐ فیلم‌ها و سریال‌های نشان‌شده"),
+                    BotCommand("language", "🌐 تغییر زبان / Change Language"),
+                    BotCommand("ping", "🏓 وضعیت آنلاین ربات")
+                )
+                client.setMyCommands(faCommands, languageCode = "fa")
+            } catch (e: Exception) {
+                logger.warn("Failed registering bot commands: ${e.message}")
             }
         }
 

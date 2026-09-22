@@ -349,6 +349,8 @@ abstract class MainAPI {
         get() = supportedTypes.contains(TvType.NSFW)
 
     open suspend fun search(query: String): List<SearchResponse> = emptyList()
+    open suspend fun getPopular(page: Int = 1): List<SearchResponse> = emptyList()
+    open suspend fun getLatest(page: Int = 1): List<SearchResponse> = emptyList()
     open suspend fun load(url: String): LoadResponse? = null
     open suspend fun loadLinks(
         data: String,
