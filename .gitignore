@@ -14,7 +14,7 @@ sample/
 # Environment & local credentials
 .env
 .env.local
-com/
+/com/
 # IDE & OS files
 .idea/
 *.iml

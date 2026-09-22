@@ -26,27 +26,33 @@ val mapper = JsonMapper.builder().addModule(kotlinModule())
 // -------------------------------------------------------------
 
 enum class TvType {
-    Movie,
-    TvSeries,
     Anime,
+    AnimeMovie,
     AsianDrama,
-    Live,
+    Audio,
+    AudioBook,
     Cartoon,
+    CustomMedia,
     Documentary,
+    Live,
+    Movie,
+    Music,
+    NSFW,
+    OVA,
     Others,
-    NSFW
+    Podcast,
+    Torrent,
+    TvSeries,
+    Video
 }
 
-enum class Qualities(val value: Int) {
-    Unknown(400),
-    P144(144),
-    P240(240),
-    P360(360),
-    P480(480),
-    P720(720),
-    P1080(1080),
-    P2160(2160)
+enum class VPNStatus {
+    MightBeNeeded,
+    None,
+    Torrent
 }
+
+typealias Qualities = com.lagradost.cloudstream3.utils.Qualities
 
 enum class ShowStatus {
     Ongoing,

@@ -41,4 +41,23 @@ class CloudStreamPluginLoaderTest {
         assertNotNull(kisskh, "KissKH should be found in repository plugins")
         println("Found plugin metadata in repo: ${kisskh.name} -> ${kisskh.url}")
     }
+
+    @Test
+    fun testLoadStreamPlayPlugin() {
+        val streamPlayCs3 = File("data/plugins_cache/StreamPlay.cs3")
+        if (streamPlayCs3.exists()) {
+            val metadata = PluginMetadata(
+                name = "StreamPlay",
+                internalName = "StreamPlay",
+                url = "local",
+                repositoryName = "local"
+            )
+            val provider = CloudStreamPluginLoader.loadPlugin(metadata)
+            assertNotNull(provider, "StreamPlay should load successfully")
+            println("Successfully loaded StreamPlay provider: ${provider.name}")
+            val animeProvider = com.telestream.providers.ProviderManager.getProvider("StreamPlay-Anime")
+            assertNotNull(animeProvider, "StreamPlay-Anime should also be registered")
+            println("Successfully verified StreamPlay-Anime: ${animeProvider.name}")
+        }
+    }
 }

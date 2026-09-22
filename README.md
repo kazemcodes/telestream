@@ -138,6 +138,8 @@ java -jar build/libs/telestream-all.jar
 **English / Default:**
 ```text
 start - Main menu & dashboard
+popular - Popular & trending media
+latest - Latest released movies & series
 sources - Choose active source provider
 enabled_sources - View all enabled sources
 manage_sources - Manage & toggle sources
@@ -152,6 +154,8 @@ app - Launch TeleStream Mini App
 **Persian / فارسی (Optional for `fa` language in BotFather):**
 ```text
 start - منوی اصلی و داشبورد
+popular - فیلم‌ها و سریال‌های محبوب و داغ
+latest - جدیدترین فیلم‌ها و سریال‌ها
 sources - انتخاب منبع فیلم و سریال
 enabled_sources - سورس‌های فعال من
 manage_sources - مدیریت و فعال‌سازی سورس‌ها

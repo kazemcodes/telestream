@@ -33,5 +33,8 @@ class SimulatedContext(
     override fun getDataDir(): File = dataDir
     override fun getApplicationContext(): Context = this
     override fun getClassLoader(): ClassLoader = customClassLoader
-    override fun getSystemService(name: String): Any? = null
+    override fun getSystemService(name: String): Any? = when (name) {
+        "activity" -> android.app.ActivityManager()
+        else -> null
+    }
 }

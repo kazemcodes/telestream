@@ -33,6 +33,13 @@ object ProviderManager {
             val meta = com.telestream.repo.CloudStreamRepoManager.getPlugin(name)
             if (meta != null) {
                 p = com.telestream.repo.CloudStreamPluginLoader.loadPlugin(meta)
+                if (p?.name?.equals(name, ignoreCase = true) != true) {
+                    p = providers.firstOrNull {
+                        it.name.equals(name, ignoreCase = true) ||
+                        it.name.startsWith(name, ignoreCase = true) ||
+                        name.startsWith(it.name, ignoreCase = true)
+                    } ?: p
+                }
             }
         }
         if (p == null) return null
