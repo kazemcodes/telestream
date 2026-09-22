@@ -2,9 +2,6 @@ package com.telestream
 
 import com.lagradost.cloudstream3.TvType
 import com.telestream.database.Database
-import com.telestream.providers.AvaMovie
-import com.telestream.providers.FaselHD
-import com.telestream.providers.KissKH
 import com.telestream.providers.ProviderManager
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -16,10 +13,16 @@ class ProviderTest {
 
     @Test
     fun testProviderRegistration() {
-        assertNotNull(ProviderManager.getProvider("KissKH"))
-        assertNotNull(ProviderManager.getProvider("AvaMovie (فارسی)"))
-        assertNotNull(ProviderManager.getProvider("FaselHD (العربية)"))
-        assertEquals(3, ProviderManager.providers.size)
+        val dummy = object : com.lagradost.cloudstream3.MainAPI() {
+            override var name = "TestProvider"
+            override var mainUrl = "https://example.com"
+            override var lang = "en"
+            override var supportedTypes = setOf(TvType.TvSeries)
+            override suspend fun search(query: String): List<com.lagradost.cloudstream3.SearchResponse> = emptyList()
+        }
+        ProviderManager.register(dummy)
+        assertNotNull(ProviderManager.getProvider("TestProvider"))
+        assertTrue(ProviderManager.providers.isNotEmpty())
     }
 
     @Test
@@ -32,22 +35,7 @@ class ProviderTest {
     }
 
     @Test
-    fun testProvidersMetadata() {
-        val kiss = KissKH()
-        assertEquals("en", kiss.lang)
-        assertTrue(kiss.supportedTypes.contains(TvType.TvSeries))
-
-        val ava = AvaMovie()
-        assertEquals("fa", ava.lang)
-        assertTrue(ava.supportedTypes.contains(TvType.Movie))
-
-        val fasel = FaselHD()
-        assertEquals("ar", fasel.lang)
-    }
-
-    @Test
     fun testNsfwFiltering() {
-        // Create a dummy NSFW provider
         val nsfwProvider = object : com.lagradost.cloudstream3.MainAPI() {
             override var name = "AdultTestProvider"
             override var mainUrl = "https://adult.example.com"
@@ -56,32 +44,48 @@ class ProviderTest {
         }
         ProviderManager.register(nsfwProvider)
 
-        // When NSFW is disabled
-        com.telestream.database.Database.setNsfwEnabled(false)
+        Database.setNsfwEnabled(false)
         kotlin.test.assertNull(ProviderManager.getProvider("AdultTestProvider"))
 
-        // When NSFW is enabled
-        com.telestream.database.Database.setNsfwEnabled(true)
+        Database.setNsfwEnabled(true)
         kotlin.test.assertNotNull(ProviderManager.getProvider("AdultTestProvider"))
 
-        // Clean up
-        com.telestream.database.Database.setNsfwEnabled(false)
+        Database.setNsfwEnabled(false)
         ProviderManager.providers.remove(nsfwProvider)
     }
 
     @Test
     fun testProviderFilters() {
+        val p1 = object : com.lagradost.cloudstream3.MainAPI() {
+            override var name = "FaMovie"
+            override var mainUrl = "https://fa.example.com"
+            override var lang = "fa"
+        }
+        val p2 = object : com.lagradost.cloudstream3.MainAPI() {
+            override var name = "ArMovie"
+            override var mainUrl = "https://ar.example.com"
+            override var lang = "ar"
+        }
+        val p3 = object : com.lagradost.cloudstream3.MainAPI() {
+            override var name = "AnimeTest"
+            override var mainUrl = "https://anime.example.com"
+            override var lang = "en"
+            override var supportedTypes = setOf(TvType.Anime)
+        }
+        ProviderManager.register(p1)
+        ProviderManager.register(p2)
+        ProviderManager.register(p3)
+
         val faProviders = ProviderManager.getProvidersByFilter("fa")
-        assertTrue(faProviders.any { it.name.contains("AvaMovie", ignoreCase = true) })
+        assertTrue(faProviders.any { it.name == "FaMovie" })
 
         val arProviders = ProviderManager.getProvidersByFilter("ar")
-        assertTrue(arProviders.any { it.name.contains("FaselHD", ignoreCase = true) })
+        assertTrue(arProviders.any { it.name == "ArMovie" })
 
         val animeProviders = ProviderManager.getProvidersByFilter("anime")
-        assertTrue(animeProviders.any { it.name.contains("KissKH", ignoreCase = true) })
+        assertTrue(animeProviders.any { it.name == "AnimeTest" })
 
-        val allProviders = ProviderManager.getProvidersByFilter("all")
-        assertEquals(3, allProviders.size)
+        ProviderManager.providers.removeAll(listOf(p1, p2, p3))
     }
 
     @Test
@@ -90,21 +94,21 @@ class ProviderTest {
         Database.setUserSource(testUserId, "KissKH")
         assertEquals("KissKH", Database.getUserSource(testUserId))
 
-        Database.setUserSource(testUserId, "AvaMovie (فارسی)")
-        assertEquals("AvaMovie (فارسی)", Database.getUserSource(testUserId))
+        Database.setUserSource(testUserId, "AnimeAV")
+        assertEquals("AnimeAV", Database.getUserSource(testUserId))
     }
 
     @Test
     fun testCallbackTokenCache() {
-        val ref = com.telestream.bot.MediaRef("AvaMovie", "https://avamovie3.info/series/12345")
+        val ref = com.telestream.bot.MediaRef("AnimeAV", "https://animeav1.com/series/12345")
         val token = com.telestream.bot.CallbackTokenCache.put(ref)
         assertNotNull(token)
         assertTrue(token.length < 10) // compact token!
 
         val retrieved = com.telestream.bot.CallbackTokenCache.get<com.telestream.bot.MediaRef>(token)
         assertNotNull(retrieved)
-        assertEquals("AvaMovie", retrieved.provider)
-        assertEquals("https://avamovie3.info/series/12345", retrieved.url)
+        assertEquals("AnimeAV", retrieved.provider)
+        assertEquals("https://animeav1.com/series/12345", retrieved.url)
     }
 
     @Test
@@ -121,10 +125,8 @@ class ProviderTest {
     fun testSourceEnableDisableAndBulk() {
         val testUser = System.currentTimeMillis()
 
-        // Built-in sources default to enabled
-        assertTrue(Database.isSourceEnabled(testUser, "AvaMovie (فارسی)"))
+        // Default: KissKH enabled initially
         assertTrue(Database.isSourceEnabled(testUser, "KissKH"))
-        // Non-builtin sources default to disabled
         assertFalse(Database.isSourceEnabled(testUser, "CustomPluginX"))
 
         // Toggle non-builtin to enabled
@@ -132,7 +134,7 @@ class ProviderTest {
         assertTrue(toggledOn)
         assertTrue(Database.isSourceEnabled(testUser, "CustomPluginX"))
 
-        // Toggle built-in to disabled
+        // Toggle KissKH to disabled
         val toggledOff = Database.toggleSourceEnabled(testUser, "KissKH")
         assertFalse(toggledOff)
         assertFalse(Database.isSourceEnabled(testUser, "KissKH"))
@@ -140,7 +142,6 @@ class ProviderTest {
         // Verify getEnabledSources
         val enabledList = Database.getEnabledSources(testUser)
         assertTrue(enabledList.contains("CustomPluginX"))
-        assertTrue(enabledList.contains("AvaMovie (فارسی)"))
         assertFalse(enabledList.contains("KissKH"))
 
         // Bulk operations
@@ -156,29 +157,46 @@ class ProviderTest {
     @Test
     fun testCloudStreamRepoManagerHelpers() {
         val repos = com.telestream.repo.CloudStreamRepoManager.getRepositoryNames()
-        assertTrue(repos.contains("Built-in Sources"))
+        assertTrue(repos.isNotEmpty())
 
-        val builtInLangs = com.telestream.repo.CloudStreamRepoManager.getLanguagesForRepo("Built-in Sources")
-        assertTrue(builtInLangs.contains("fa"))
-        assertTrue(builtInLangs.contains("ar"))
-        assertTrue(builtInLangs.contains("en"))
+        val plugins = com.telestream.repo.CloudStreamRepoManager.getAllPlugins()
+        assertTrue(plugins.isNotEmpty())
 
-        val builtInPlugins = com.telestream.repo.CloudStreamRepoManager.getPluginsForRepo("Built-in Sources")
-        assertEquals(3, builtInPlugins.size)
-        assertTrue(builtInPlugins.any { it.name.contains("AvaMovie") })
+        val firstRepo = repos.first()
+        val langs = com.telestream.repo.CloudStreamRepoManager.getLanguagesForRepo(firstRepo)
+        assertTrue(langs.contains("all"))
+
+        val repoPlugins = com.telestream.repo.CloudStreamRepoManager.getPluginsForRepo(firstRepo)
+        assertTrue(repoPlugins.isNotEmpty())
     }
 
     @Test
     fun testPopularAndLatestFeeds() {
-        kotlinx.coroutines.runBlocking {
-            val popularKiss = ProviderManager.getPopular("KissKH")
-            assertNotNull(popularKiss)
+        val p = object : com.lagradost.cloudstream3.MainAPI() {
+            override var name = "FeedProvider"
+            override var mainUrl = "https://feed.example.com"
+            override suspend fun getPopular(page: Int): List<com.lagradost.cloudstream3.SearchResponse> {
+                return listOf(com.lagradost.cloudstream3.MovieSearchResponse("Popular 1", "https://url1", name, TvType.Movie, null, null))
+            }
+            override suspend fun getLatest(page: Int): List<com.lagradost.cloudstream3.SearchResponse> {
+                return listOf(com.lagradost.cloudstream3.MovieSearchResponse("Latest 1", "https://url2", name, TvType.Movie, null, null))
+            }
+        }
+        ProviderManager.register(p)
 
-            val latestAva = ProviderManager.getLatest("AvaMovie (فارسی)")
-            assertNotNull(latestAva)
+        kotlinx.coroutines.runBlocking {
+            val popular = ProviderManager.getPopular("FeedProvider")
+            assertEquals(1, popular.size)
+            assertEquals("Popular 1", popular[0].name)
+
+            val latest = ProviderManager.getLatest("FeedProvider")
+            assertEquals(1, latest.size)
+            assertEquals("Latest 1", latest[0].name)
 
             val nonExistent = ProviderManager.getPopular("UnknownProviderXYZ")
             assertTrue(nonExistent.isEmpty())
         }
+
+        ProviderManager.providers.remove(p)
     }
 }

@@ -90,7 +90,7 @@ fun main(): Unit = runBlocking {
             get("/api/search") {
                 call.response.headers.append("Access-Control-Allow-Origin", "*")
                 val query = call.request.queryParameters["q"] ?: ""
-                val provider = call.request.queryParameters["provider"] ?: "AvaMovie"
+                val provider = call.request.queryParameters["provider"] ?: "KissKH"
                 if (query.isBlank()) {
                     call.respondText("[]", ContentType.Application.Json)
                     return@get

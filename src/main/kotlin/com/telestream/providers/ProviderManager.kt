@@ -17,9 +17,6 @@ object ProviderManager {
     private val latestCache = ConcurrentHashMap<String, List<SearchResponse>>()
 
     init {
-        register(KissKH())
-        register(AvaMovie())
-        register(FaselHD())
     }
 
     fun register(provider: MainAPI) {
@@ -27,11 +24,18 @@ object ProviderManager {
     }
 
     fun getProvider(name: String): MainAPI? {
-        val p = providers.firstOrNull { 
+        var p = providers.firstOrNull { 
             it.name.equals(name, ignoreCase = true) ||
             it.name.startsWith(name, ignoreCase = true) ||
             name.startsWith(it.name, ignoreCase = true)
-        } ?: return null
+        }
+        if (p == null) {
+            val meta = com.telestream.repo.CloudStreamRepoManager.getPlugin(name)
+            if (meta != null) {
+                p = com.telestream.repo.CloudStreamPluginLoader.loadPlugin(meta)
+            }
+        }
+        if (p == null) return null
         if (p.isNsfw && !Database.isNsfwEnabled()) return null
         return p
     }

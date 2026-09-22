@@ -31,13 +31,13 @@ object Database {
                     CREATE TABLE IF NOT EXISTS users (
                         user_id INTEGER PRIMARY KEY,
                         language TEXT DEFAULT 'en',
-                        active_source TEXT DEFAULT 'AvaMovie',
+                        active_source TEXT DEFAULT 'KissKH',
                         joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                     """.trimIndent()
                 )
                 try {
-                    stmt.execute("ALTER TABLE users ADD COLUMN active_source TEXT DEFAULT 'AvaMovie';")
+                    stmt.execute("ALTER TABLE users ADD COLUMN active_source TEXT DEFAULT 'KissKH';")
                 } catch (ignored: Exception) {}
                 stmt.execute(
                     """
@@ -104,7 +104,7 @@ object Database {
         }
     }
 
-    val BUILTIN_SOURCES = listOf("AvaMovie (فارسی)", "KissKH", "FaselHD (العربية)")
+    val BUILTIN_SOURCES = emptyList<String>()
 
     fun isSourceEnabled(userId: Long, sourceName: String): Boolean {
         DriverManager.getConnection(url).use { conn ->
@@ -118,12 +118,8 @@ object Database {
                 }
             }
         }
-        // Default: Built-in sources are enabled, repository extensions are disabled
-        return BUILTIN_SOURCES.any {
-            it.equals(sourceName, ignoreCase = true) ||
-            it.startsWith(sourceName, ignoreCase = true) ||
-            sourceName.startsWith(it, ignoreCase = true)
-        }
+        // Default: KissKH enabled initially
+        return sourceName.equals("KissKH", ignoreCase = true)
     }
 
     fun setSourceEnabled(userId: Long, sourceName: String, enabled: Boolean) {
@@ -150,11 +146,8 @@ object Database {
 
     fun getEnabledSources(userId: Long): List<String> {
         val enabledSet = mutableSetOf<String>()
-        // 1. Add default built-in sources unless explicitly disabled in DB
-        for (src in BUILTIN_SOURCES) {
-            if (isSourceEnabled(userId, src)) {
-                enabledSet.add(src)
-            }
+        if (isSourceEnabled(userId, "KissKH")) {
+            enabledSet.add("KissKH")
         }
 
         // 2. Query explicitly enabled sources from DB
@@ -216,10 +209,11 @@ object Database {
             }
         }
         val enabled = getEnabledSources(userId)
-        return enabled.firstOrNull() ?: "AvaMovie (فارسی)"
+        return enabled.firstOrNull() ?: "KissKH"
     }
 
     fun setUserSource(userId: Long, source: String) {
+        setSourceEnabled(userId, source, true)
         DriverManager.getConnection(url).use { conn ->
             val sql = """
                 INSERT INTO users (user_id, active_source) VALUES (?, ?)

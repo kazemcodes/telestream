@@ -3,18 +3,23 @@ package com.lagradost.cloudstream3
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.kotlinModule
-import okhttp3.Headers.Companion.toHeaders
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
-import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
+import kotlinx.serialization.json.Json
+
+const val AllLanguagesName = "universal"
+
+const val USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+
+class ErrorLoadingException(message: String? = null) : Exception(message)
+
+val json = Json {
+    encodeDefaults = true
+    explicitNulls = false
+    ignoreUnknownKeys = true
+}
+
+val mapper = JsonMapper.builder().addModule(kotlinModule())
+    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false).build()!!
 
 // -------------------------------------------------------------
 // Core Enums & Data Types matching CloudStream 3 API
@@ -54,22 +59,102 @@ const val INFER_TYPE = "video/mp4"
 // Responses & Models
 // -------------------------------------------------------------
 
-data class SearchResponse(
-    val name: String,
-    val url: String,
-    val apiName: String,
-    var type: TvType = TvType.Movie,
-    var posterUrl: String? = null,
-    var year: Int? = null,
-    var id: Int? = null,
-    var posterHeaders: Map<String, String>? = null,
-    var dubStatus: Int? = null,
-    var epCount: Int? = null
+open class SearchResponse(
+    open val name: String,
+    open val url: String,
+    open val apiName: String,
+    open var type: TvType = TvType.Movie,
+    open var posterUrl: String? = null,
+    open var year: Int? = null,
+    open var id: Int? = null,
+    open var posterHeaders: Map<String, String>? = null,
+    open var dubStatus: Int? = null,
+    open var epCount: Int? = null
 ) {
     fun addSub(episodes: Int?) {
         this.epCount = episodes
     }
+    fun addDub(episodes: Int?) {
+        this.epCount = episodes
+    }
 }
+
+class AnimeSearchResponse(
+    override val name: String,
+    override val url: String,
+    override val apiName: String,
+    override var type: TvType = TvType.Anime,
+    override var posterUrl: String? = null,
+    override var year: Int? = null,
+    override var id: Int? = null,
+    override var posterHeaders: Map<String, String>? = null,
+    override var dubStatus: Int? = null,
+    override var epCount: Int? = null
+) : SearchResponse(name, url, apiName, type, posterUrl, year, id, posterHeaders, dubStatus, epCount)
+
+class MovieSearchResponse(
+    override val name: String,
+    override val url: String,
+    override val apiName: String,
+    override var type: TvType = TvType.Movie,
+    override var posterUrl: String? = null,
+    override var year: Int? = null,
+    override var id: Int? = null,
+    override var posterHeaders: Map<String, String>? = null,
+    override var dubStatus: Int? = null,
+    override var epCount: Int? = null
+) : SearchResponse(name, url, apiName, type, posterUrl, year, id, posterHeaders, dubStatus, epCount)
+
+class TvSeriesSearchResponse(
+    override val name: String,
+    override val url: String,
+    override val apiName: String,
+    override var type: TvType = TvType.TvSeries,
+    override var posterUrl: String? = null,
+    override var year: Int? = null,
+    override var id: Int? = null,
+    override var posterHeaders: Map<String, String>? = null,
+    override var dubStatus: Int? = null,
+    override var epCount: Int? = null
+) : SearchResponse(name, url, apiName, type, posterUrl, year, id, posterHeaders, dubStatus, epCount)
+
+data class MainPageData(
+    val name: String,
+    val data: String,
+    val horizontalImages: Boolean = false
+)
+
+data class MainPageRequest(
+    val name: String,
+    val data: String,
+    val horizontalImages: Boolean = false
+)
+
+data class HomePageList(
+    val name: String,
+    var list: List<SearchResponse>,
+    val isHorizontalImages: Boolean = false
+)
+
+data class HomePageResponse(
+    val items: List<HomePageList>,
+    val hasNext: Boolean = false
+)
+
+fun mainPage(url: String, name: String, horizontalImages: Boolean = false): MainPageData =
+    MainPageData(name, url, horizontalImages)
+
+fun mainPageOf(vararg elements: MainPageData): List<MainPageData> = elements.toList()
+fun mainPageOf(vararg elements: Pair<String, String>): List<MainPageData> =
+    elements.map { (url, name) -> MainPageData(name, url) }
+
+fun newHomePageResponse(name: String, list: List<SearchResponse>, hasNext: Boolean? = null): HomePageResponse =
+    HomePageResponse(listOf(HomePageList(name, list)), hasNext ?: list.isNotEmpty())
+
+fun newHomePageResponse(list: List<HomePageList>, hasNext: Boolean? = null): HomePageResponse =
+    HomePageResponse(list, hasNext ?: list.any { it.list.isNotEmpty() })
+
+typealias ExtractorLink = com.lagradost.cloudstream3.utils.ExtractorLink
 
 data class Episode(
     val data: String,
@@ -79,17 +164,6 @@ data class Episode(
     var rating: Int? = null,
     var posterUrl: String? = null,
     var description: String? = null
-)
-
-data class ExtractorLink(
-    val source: String,
-    val name: String,
-    val url: String,
-    val referer: String,
-    val quality: Int,
-    val isM3u8: Boolean = false,
-    val headers: Map<String, String> = emptyMap(),
-    val extractorData: String? = null
 )
 
 data class SubtitleFile(
@@ -214,129 +288,6 @@ class ExtractorLinkBuilder(
 )
 
 // -------------------------------------------------------------
-// Pure JVM Network Helper: app (OkHttp + Jsoup + Jackson)
-// -------------------------------------------------------------
-
-val mapper: JsonMapper = JsonMapper.builder()
-    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-    .addModule(kotlinModule())
-    .build()
-
-class NiceResponse(
-    val code: Int,
-    val url: String,
-    val text: String,
-    val headers: Map<String, List<String>>
-) {
-    val document: Document by lazy {
-        Jsoup.parse(text, url)
-    }
-
-    val isSuccessful: Boolean = code in 200..299
-
-    inline fun <reified T> parsedSafe(): T? {
-        return try {
-            mapper.readValue(text, T::class.java)
-        } catch (e: Exception) {
-            null
-        }
-    }
-}
-
-object app {
-    private val trustAllCerts = arrayOf<TrustManager>(
-        object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) {}
-            override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        }
-    )
-
-    private val sslContext = SSLContext.getInstance("SSL").apply {
-        init(null, trustAllCerts, SecureRandom())
-    }
-
-    private val dispatcher = okhttp3.Dispatcher().apply {
-        maxRequests = 128
-        maxRequestsPerHost = 32
-    }
-
-    private val connectionPool = okhttp3.ConnectionPool(64, 5, TimeUnit.MINUTES)
-
-    val client: OkHttpClient = OkHttpClient.Builder()
-        .dispatcher(dispatcher)
-        .connectionPool(connectionPool)
-        .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-        .hostnameVerifier { _, _ -> true }
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
-
-    fun get(
-        url: String,
-        headers: Map<String, String> = emptyMap(),
-        referer: String? = null,
-        timeout: Long = 20000
-    ): NiceResponse {
-        val reqHeaders = headers.toMutableMap()
-        if (!reqHeaders.containsKey("User-Agent")) {
-            reqHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        }
-        referer?.let { reqHeaders["Referer"] = it }
-
-        val request = Request.Builder()
-            .url(url)
-            .headers(reqHeaders.toHeaders())
-            .get()
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: ""
-            return NiceResponse(
-                code = response.code,
-                url = response.request.url.toString(),
-                text = body,
-                headers = response.headers.toMultimap()
-            )
-        }
-    }
-
-    fun post(
-        url: String,
-        headers: Map<String, String> = emptyMap(),
-        data: Map<String, String>? = null,
-        referer: String? = null
-    ): NiceResponse {
-        val reqHeaders = headers.toMutableMap()
-        if (!reqHeaders.containsKey("User-Agent")) {
-            reqHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        }
-        referer?.let { reqHeaders["Referer"] = it }
-
-        val formBody = okhttp3.FormBody.Builder().apply {
-            data?.forEach { (k, v) -> add(k, v) }
-        }.build()
-
-        val request = Request.Builder()
-            .url(url)
-            .headers(reqHeaders.toHeaders())
-            .post(formBody)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: ""
-            return NiceResponse(
-                code = response.code,
-                url = response.request.url.toString(),
-                text = body,
-                headers = response.headers.toMultimap()
-            )
-        }
-    }
-}
-
-// -------------------------------------------------------------
 // Base MainAPI Class
 // -------------------------------------------------------------
 
@@ -347,8 +298,15 @@ abstract class MainAPI {
     open val supportedTypes: Set<TvType> = setOf(TvType.Movie, TvType.TvSeries)
     open val isNsfw: Boolean
         get() = supportedTypes.contains(TvType.NSFW)
+    open var sourcePlugin: String? = null
+
+    open val hasMainPage: Boolean = false
+    open val hasQuickSearch: Boolean = false
+    open val mainPage: List<MainPageData> = emptyList()
 
     open suspend fun search(query: String): List<SearchResponse> = emptyList()
+    open suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
+    open suspend fun getMainPage(page: Int = 1, request: MainPageRequest? = null): HomePageResponse? = null
     open suspend fun getPopular(page: Int = 1): List<SearchResponse> = emptyList()
     open suspend fun getLatest(page: Int = 1): List<SearchResponse> = emptyList()
     open suspend fun load(url: String): LoadResponse? = null
@@ -358,6 +316,7 @@ abstract class MainAPI {
         subtitleCallback: (SubtitleFile) -> Unit = {},
         callback: (ExtractorLink) -> Unit
     ): Boolean = false
+    open fun getVideoInterceptor(extractorLink: ExtractorLink): okhttp3.Interceptor? = null
 
     fun fixUrl(url: String): String {
         return if (url.startsWith("//")) {

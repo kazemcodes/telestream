@@ -33,11 +33,17 @@ dependencies {
     // Web Scraping & Network (matching CloudStream libraries)
     implementation("org.jsoup:jsoup:1.18.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.1")
     implementation("org.json:json:20240303")
 
     // SQLite Persistence
     implementation("org.xerial:sqlite-jdbc:3.47.0.0")
+
+    // Dex to Jar translation for real CloudStream .cs3 plugin execution
+    implementation("de.femtopedia.dex2jar:dex-translator:2.4.36")
+    implementation("de.femtopedia.dex2jar:dex-tools:2.4.36")
+    implementation("org.ow2.asm:asm:9.7.1")
 
     // Logging
     implementation("ch.qos.logback:logback-classic:1.5.12")
@@ -51,10 +57,12 @@ dependencies {
 
 application {
     mainClass.set("com.telestream.MainKt")
+    applicationDefaultJvmArgs = listOf("-noverify", "-Xverify:none")
 }
 
 tasks.test {
     useJUnitPlatform()
+    jvmArgs("-noverify", "-Xverify:none")
 }
 
 // Fat JAR task for 1-click self-contained deployment
