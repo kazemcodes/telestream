@@ -1,0 +1,23 @@
+# Gradle build outputs & cache
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Dynamic data, repositories, and SQLite databases (fetched on-demand)
+data/
+sample/
+*.db
+*.db-journal
+
+# Environment & local credentials
+.env
+.env.local
+
+# IDE & OS files
+.idea/
+*.iml
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
+sample/
