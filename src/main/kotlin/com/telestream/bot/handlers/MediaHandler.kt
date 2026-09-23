@@ -35,19 +35,23 @@ class MediaHandler(
             return
         }
 
-        bot.answerCallbackQuery(callback.id, t("loading_details_tag", lang))
+        bot.answerCallbackQuery(callback.id)
         BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
         bot.sendChatAction(chatId, "typing")
+
+        val loadingMsgId = bot.sendMessage(chatId, t("loading_details_msg", lang))
 
         stateManager.tryAcquireRequestLock(userId, "load:$token")
         val details = try {
             ProviderManager.load(ref.provider, ref.url)
         } finally {
             stateManager.releaseRequestLock(userId)
+            if (loadingMsgId != null) {
+                bot.deleteMessage(chatId, loadingMsgId)
+            }
         }
         if (details == null) {
-            val rawUrl = ref.url.takeIf { it.startsWith("http") }
-            val webUrl = UrlSanitizer.sanitizeTelegramUrl(rawUrl)
+            val webUrl = UrlSanitizer.resolveWebUrl(ref.url, ref.provider)
             val fallbackButtons = mutableListOf<List<InlineKeyboardButton>>()
             if (!webUrl.isNullOrBlank()) {
                 fallbackButtons.add(
@@ -105,8 +109,8 @@ class MediaHandler(
         }
 
         // Website URL button
-        val rawPageUrl = details.url.takeIf { it.startsWith("http") } ?: ref.url.takeIf { it.startsWith("http") }
-        val pageUrl = UrlSanitizer.sanitizeTelegramUrl(rawPageUrl)
+        val pageUrl = UrlSanitizer.resolveWebUrl(details.url, ref.provider, details.name)
+            ?: UrlSanitizer.resolveWebUrl(ref.url, ref.provider, details.name)
         if (!pageUrl.isNullOrBlank()) {
             buttons.add(
                 listOf(
@@ -153,19 +157,23 @@ class MediaHandler(
             return
         }
 
-        bot.answerCallbackQuery(callback.id, t("loading_episodes_tag", lang))
+        bot.answerCallbackQuery(callback.id)
         BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
         bot.sendChatAction(chatId, "typing")
+
+        val loadingMsgId = bot.sendMessage(chatId, t("loading_episodes_msg", lang))
 
         stateManager.tryAcquireRequestLock(userId, "eps:$token")
         val details = try {
             ProviderManager.load(ref.provider, ref.url)
         } finally {
             stateManager.releaseRequestLock(userId)
+            if (loadingMsgId != null) {
+                bot.deleteMessage(chatId, loadingMsgId)
+            }
         }
         if (details == null) {
-            val rawUrl = ref.url.takeIf { it.startsWith("http") }
-            val webUrl = UrlSanitizer.sanitizeTelegramUrl(rawUrl)
+            val webUrl = UrlSanitizer.resolveWebUrl(ref.url, ref.provider)
             val fallbackButtons = mutableListOf<List<InlineKeyboardButton>>()
             if (!webUrl.isNullOrBlank()) {
                 fallbackButtons.add(
@@ -260,22 +268,26 @@ class MediaHandler(
             return
         }
 
-        bot.answerCallbackQuery(callback.id, t("resolving_links_tag", lang))
+        bot.answerCallbackQuery(callback.id)
         BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
         bot.sendChatAction(chatId, "typing")
+
+        val loadingMsgId = bot.sendMessage(chatId, t("resolving_links_msg", lang))
 
         stateManager.tryAcquireRequestLock(userId, "links:$epToken")
         val links = try {
             ProviderManager.loadLinks(epRef.provider, epRef.episodeData)
         } finally {
             stateManager.releaseRequestLock(userId)
+            if (loadingMsgId != null) {
+                bot.deleteMessage(chatId, loadingMsgId)
+            }
         }
 
         if (links.isEmpty()) {
             val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
-            val rawWebUrl = epRef.episodeData.takeIf { it.startsWith("http") }
-                ?: seriesRef?.url?.takeIf { it.startsWith("http") }
-            val webUrl = UrlSanitizer.sanitizeTelegramUrl(rawWebUrl)
+            val webUrl = UrlSanitizer.resolveWebUrl(epRef.episodeData, epRef.provider, epRef.episodeTitle)
+                ?: seriesRef?.let { UrlSanitizer.resolveWebUrl(it.url, it.provider, epRef.episodeTitle) }
             val fallbackButtons = mutableListOf<List<InlineKeyboardButton>>()
             if (!webUrl.isNullOrBlank()) {
                 fallbackButtons.add(
@@ -298,9 +310,10 @@ class MediaHandler(
                     InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                 )
             )
+            val noLinksMsg = if (!webUrl.isNullOrBlank()) t("no_links_open_web", lang) else t("no_links", lang)
             bot.sendMessage(
                 chatId,
-                t("no_links_open_web", lang),
+                noLinksMsg,
                 replyMarkup = InlineKeyboardMarkup(fallbackButtons)
             )
             return
@@ -364,9 +377,8 @@ class MediaHandler(
             )
         }
 
-        val rawWebUrl = epRef.episodeData.takeIf { it.startsWith("http") }
-            ?: seriesRef?.url?.takeIf { it.startsWith("http") }
-        val webUrl = UrlSanitizer.sanitizeTelegramUrl(rawWebUrl)
+        val webUrl = UrlSanitizer.resolveWebUrl(epRef.episodeData, epRef.provider, epRef.episodeTitle)
+            ?: seriesRef?.let { UrlSanitizer.resolveWebUrl(it.url, it.provider, epRef.episodeTitle) }
         if (!webUrl.isNullOrBlank()) {
             buttons.add(
                 listOf(
@@ -462,8 +474,8 @@ class MediaHandler(
                         )
                     )
                 }
-                val rawPageUrl = details.url.takeIf { it.startsWith("http") } ?: historyItem.mediaUrl.takeIf { it.startsWith("http") }
-                val pageUrl = UrlSanitizer.sanitizeTelegramUrl(rawPageUrl)
+                val pageUrl = UrlSanitizer.resolveWebUrl(details.url, historyItem.provider, details.name)
+                    ?: UrlSanitizer.resolveWebUrl(historyItem.mediaUrl, historyItem.provider, historyItem.title)
                 if (!pageUrl.isNullOrBlank()) {
                     buttons.add(
                         listOf(

@@ -75,9 +75,9 @@ application {
 
 tasks.test {
     useJUnitPlatform()
+    maxHeapSize = "3072m"
+    minHeapSize = "512m"
     jvmArgs(
-        "-Xmx2g",
-        "-Xms512m",
         "-noverify",
         "-Xverify:none",
         "-Dkotlinx.coroutines.stacktrace.recovery=false"

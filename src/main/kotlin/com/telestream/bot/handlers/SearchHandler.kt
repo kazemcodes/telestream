@@ -280,7 +280,7 @@ class SearchHandler(
         val pair = CallbackTokenCache.get<Pair<String, String>>(token)
         if (pair != null) {
             val (sourceName, query) = pair
-            bot.answerCallbackQuery(callback.id, t("searching_tag", lang))
+            bot.answerCallbackQuery(callback.id)
             BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
             executeSearch(chatId, userId, lang, sourceName, query)
         } else {
@@ -313,7 +313,7 @@ class SearchHandler(
         val token = data.removePrefix("src_exec:")
         val ref = CallbackTokenCache.get<SearchExecRef>(token)
         if (ref != null) {
-            bot.answerCallbackQuery(callback.id, t("searching_tag", lang))
+            bot.answerCallbackQuery(callback.id)
             BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
             Database.setUserSource(userId, ref.sourceName)
             executeSearch(chatId, userId, lang, ref.sourceName, ref.query)

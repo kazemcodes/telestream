@@ -179,7 +179,7 @@ class CarouselHandler(private val bot: TelegramClient) {
             return
         }
 
-        bot.answerCallbackQuery(callback.id, if (lang == "fa") "در حال ارسال اسلایدر تصاویر..." else "Sending photo slider album...")
+        bot.answerCallbackQuery(callback.id)
         val success = bot.sendMediaGroup(chatId, validPhotos)
         if (success) {
             val promptText = "${t("btn_photo_slider", lang)}\n\n${t("slider_instructions", lang)}"

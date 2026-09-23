@@ -467,7 +467,7 @@ class FeedHandler(
 
     suspend fun handleFeedSelect(callback: CallbackQuery, data: String, chatId: Long, messageId: Long, userId: Long, lang: String) {
         val feedType = if (data == "feed:popular") "popular" else "latest"
-        bot.answerCallbackQuery(callback.id, t("loading_feed_tag", lang))
+        bot.answerCallbackQuery(callback.id)
         BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
         bot.sendChatAction(chatId, "typing")
         stateManager.tryAcquireRequestLock(userId, data)
@@ -490,7 +490,7 @@ class FeedHandler(
         val token = parts.getOrNull(1) ?: ""
         val sourceName = CallbackTokenCache.get<String>(token) ?: Database.getUserSource(userId)
         Database.setUserSource(userId, sourceName)
-        bot.answerCallbackQuery(callback.id, t("loading_feed_tag", lang))
+        bot.answerCallbackQuery(callback.id)
         BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
         bot.sendChatAction(chatId, "typing")
         stateManager.tryAcquireRequestLock(userId, "feed_src")
@@ -507,7 +507,7 @@ class FeedHandler(
         val page = parts.getOrNull(1)?.toIntOrNull() ?: 1
         val token = parts.getOrNull(2) ?: ""
         val sourceName = CallbackTokenCache.get<String>(token) ?: Database.getUserSource(userId)
-        bot.answerCallbackQuery(callback.id, t("loading_feed_tag", lang))
+        bot.answerCallbackQuery(callback.id)
         BotKeyboards.showButtonLoadingTag(bot, chatId, messageId, callback.message?.replyMarkup, data, lang)
         bot.sendChatAction(chatId, "typing")
         stateManager.tryAcquireRequestLock(userId, "feed_retry")

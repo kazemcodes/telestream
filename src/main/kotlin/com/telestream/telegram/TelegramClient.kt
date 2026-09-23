@@ -66,8 +66,8 @@ class TelegramClient(private val botToken: String) {
         text: String,
         replyMarkup: InlineKeyboardMarkup? = null,
         parseMode: String = "Markdown"
-    ) {
-        try {
+    ): Long? {
+        return try {
             val payload = buildJsonObject {
                 put("chat_id", chatId)
                 put("text", text)
@@ -80,11 +80,14 @@ class TelegramClient(private val botToken: String) {
                 contentType(ContentType.Application.Json)
                 setBody(payload.toString())
             }
-            if (!res.status.isSuccess()) {
+            if (res.status.isSuccess()) {
+                val elem = json.parseToJsonElement(res.bodyAsText())
+                elem.jsonObject["result"]?.jsonObject?.get("message_id")?.jsonPrimitive?.longOrNull ?: 1L
+            } else {
                 val errorBody = res.bodyAsText()
                 logger.error("Error sending message to $chatId [HTTP ${res.status.value}]: $errorBody")
                 if (errorBody.contains("can't parse entities") || errorBody.contains("parse")) {
-                    client.post("$baseUrl/sendMessage") {
+                    val fallbackRes = client.post("$baseUrl/sendMessage") {
                         contentType(ContentType.Application.Json)
                         val fallback = buildJsonObject {
                             put("chat_id", chatId)
@@ -95,10 +98,32 @@ class TelegramClient(private val botToken: String) {
                         }
                         setBody(fallback.toString())
                     }
-                }
+                    if (fallbackRes.status.isSuccess()) {
+                        val elem = json.parseToJsonElement(fallbackRes.bodyAsText())
+                        elem.jsonObject["result"]?.jsonObject?.get("message_id")?.jsonPrimitive?.longOrNull ?: 1L
+                    } else null
+                } else null
             }
         } catch (e: Exception) {
             logger.error("Error sending message to $chatId: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun deleteMessage(chatId: Long, messageId: Long): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("chat_id", chatId)
+                put("message_id", messageId)
+            }
+            val res = client.post("$baseUrl/deleteMessage") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            logger.debug("Failed deleting message $messageId: ${e.message}")
+            false
         }
     }
 

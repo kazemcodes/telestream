@@ -168,18 +168,29 @@ object CloudStreamPluginLoader {
                             super.handleMethodTranslateException(method, node, mv, e)
                         }
                     }
-                    Dex2jar.from(reader)
-                        .withExceptionHandler(handler)
-                        .reUseReg(false)
-                        .topoLogicalSort(false)
-                        .skipDebug(true)
-                        .optimizeSynchronized(false)
-                        .printIR(false)
-                        .noCode(false)
-                        .skipExceptions(true)
-                        .dontSanitizeNames(true)
-                        .computeFrames(false)
-                        .to(jarFile.toPath())
+                    val tempJar = File(jarFile.parentFile, "${jarFile.name}.tmp")
+                    if (tempJar.exists()) tempJar.delete()
+                    try {
+                        Dex2jar.from(reader)
+                            .withExceptionHandler(handler)
+                            .reUseReg(false)
+                            .topoLogicalSort(false)
+                            .skipDebug(true)
+                            .optimizeSynchronized(false)
+                            .printIR(false)
+                            .noCode(false)
+                            .skipExceptions(false)
+                            .dontSanitizeNames(true)
+                            .computeFrames(false)
+                            .to(tempJar.toPath())
+
+                        if (jarFile.exists()) jarFile.delete()
+                        tempJar.renameTo(jarFile)
+                    } catch (t: Throwable) {
+                        if (tempJar.exists()) tempJar.delete()
+                        if (jarFile.exists() && jarFile.length() == 0L) jarFile.delete()
+                        throw t
+                    }
 
                     logger.info("Generated JAR for ${metadata.name} (${jarFile.length()} bytes)")
                 }
