@@ -76,6 +76,37 @@ object Database {
         }
     }
 
+    fun ensureUser(userId: Long, defaultLang: String = "en") {
+        DriverManager.getConnection(url).use { conn ->
+            val checkSql = "SELECT user_id, language, active_source FROM users WHERE user_id = ?"
+            conn.prepareStatement(checkSql).use { checkStmt ->
+                checkStmt.setLong(1, userId)
+                val rs = checkStmt.executeQuery()
+                if (!rs.next()) {
+                    val activeSrc = if (defaultLang == "fa") "AvaMovie" else "KissKH"
+                    val insertSql = "INSERT INTO users (user_id, language, active_source) VALUES (?, ?, ?)"
+                    conn.prepareStatement(insertSql).use { insStmt ->
+                        insStmt.setLong(1, userId)
+                        insStmt.setString(2, defaultLang)
+                        insStmt.setString(3, activeSrc)
+                        insStmt.executeUpdate()
+                    }
+                    val sourceSql = "INSERT OR IGNORE INTO user_sources (user_id, source_name, is_enabled) VALUES (?, ?, 1)"
+                    conn.prepareStatement(sourceSql).use { sStmt ->
+                        sStmt.setLong(1, userId)
+                        sStmt.setString(2, "KissKH")
+                        sStmt.executeUpdate()
+                        if (defaultLang == "fa") {
+                            sStmt.setLong(1, userId)
+                            sStmt.setString(2, "AvaMovie")
+                            sStmt.executeUpdate()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fun getUserLanguage(userId: Long): String {
         DriverManager.getConnection(url).use { conn ->
             val sql = "SELECT language FROM users WHERE user_id = ?"
@@ -101,10 +132,16 @@ object Database {
                 stmt.setString(2, language)
                 stmt.executeUpdate()
             }
+            if (language == "fa") {
+                // For Persian users, ensure AvaMovie is enabled by default
+                val sourceSql = "INSERT OR IGNORE INTO user_sources (user_id, source_name, is_enabled) VALUES (?, 'AvaMovie', 1)"
+                conn.prepareStatement(sourceSql).use { sStmt ->
+                    sStmt.setLong(1, userId)
+                    sStmt.executeUpdate()
+                }
+            }
         }
     }
-
-    val BUILTIN_SOURCES = emptyList<String>()
 
     fun isSourceEnabled(userId: Long, sourceName: String): Boolean {
         DriverManager.getConnection(url).use { conn ->
@@ -118,8 +155,10 @@ object Database {
                 }
             }
         }
-        // Default: KissKH enabled initially
-        return sourceName.equals("KissKH", ignoreCase = true)
+        // Defaults if not explicitly recorded yet
+        if (sourceName.equals("KissKH", ignoreCase = true)) return true
+        if (sourceName.equals("AvaMovie", ignoreCase = true) && getUserLanguage(userId) == "fa") return true
+        return false
     }
 
     fun setSourceEnabled(userId: Long, sourceName: String, enabled: Boolean) {
@@ -146,11 +185,8 @@ object Database {
 
     fun getEnabledSources(userId: Long): List<String> {
         val enabledSet = mutableSetOf<String>()
-        if (isSourceEnabled(userId, "KissKH")) {
-            enabledSet.add("KissKH")
-        }
 
-        // 2. Query explicitly enabled sources from DB
+        // Query explicitly enabled sources from DB
         DriverManager.getConnection(url).use { conn ->
             val sql = "SELECT source_name FROM user_sources WHERE user_id = ? AND is_enabled = 1"
             conn.prepareStatement(sql).use { stmt ->
@@ -162,6 +198,12 @@ object Database {
                         enabledSet.add(s)
                     }
                 }
+            }
+        }
+        if (enabledSet.isEmpty()) {
+            val defaultSrc = if (getUserLanguage(userId) == "fa") "AvaMovie" else "KissKH"
+            if (isSourceEnabled(userId, defaultSrc)) {
+                enabledSet.add(defaultSrc)
             }
         }
         return enabledSet.toList()
@@ -209,7 +251,8 @@ object Database {
             }
         }
         val enabled = getEnabledSources(userId)
-        return enabled.firstOrNull() ?: "KissKH"
+        val defaultSrc = if (getUserLanguage(userId) == "fa" && enabled.any { it.equals("AvaMovie", true) }) "AvaMovie" else "KissKH"
+        return enabled.firstOrNull { it.equals(defaultSrc, true) } ?: enabled.firstOrNull() ?: "KissKH"
     }
 
     fun setUserSource(userId: Long, source: String) {

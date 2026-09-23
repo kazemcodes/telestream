@@ -66,6 +66,15 @@ data class SearchExecRef(
     val sourceName: String,
     val query: String
 )
+data class SourceBrowserRef(
+    val lang: String,
+    val page: Int
+)
+data class SourceActionRef(
+    val lang: String,
+    val page: Int,
+    val sourceName: String
+)
 
 class BotRunner(private val bot: TelegramClient) {
     private val logger = LoggerFactory.getLogger(BotRunner::class.java)
@@ -123,7 +132,7 @@ class BotRunner(private val bot: TelegramClient) {
         }
     }
 
-    private fun getMainMenuKeyboard(lang: String, activeSource: String): InlineKeyboardMarkup {
+    private fun getMainMenuKeyboard(lang: String, activeSource: String, isAdmin: Boolean = false): InlineKeyboardMarkup {
         val rows = mutableListOf<List<InlineKeyboardButton>>()
         val webAppUrl = Config.webAppUrl
         if (webAppUrl.isNotBlank() && webAppUrl.startsWith("https://")) {
@@ -136,46 +145,41 @@ class BotRunner(private val bot: TelegramClient) {
                 )
             )
         }
+        // Row 1: Search & Bookmarks
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_search", lang), callbackData = "menu:search"),
+                InlineKeyboardButton(text = t("btn_bookmarks", lang), callbackData = "menu:bookmarks")
+            )
+        )
+        // Row 2: Popular & Latest
         rows.add(
             listOf(
                 InlineKeyboardButton(text = t("btn_popular", lang), callbackData = "feed:popular"),
                 InlineKeyboardButton(text = t("btn_latest", lang), callbackData = "feed:latest")
             )
         )
+        // Row 3: Active Source & Source Manager
         rows.add(
             listOf(
-                InlineKeyboardButton(text = t("btn_search", lang), callbackData = "menu:search"),
-                InlineKeyboardButton(text = t("btn_sources", lang), callbackData = "menu:sources")
+                InlineKeyboardButton(text = "📡 $activeSource (${t("btn_sources", lang)})", callbackData = "menu:sources")
             )
         )
+        // Row 4: Language & Donate
         rows.add(
             listOf(
-                InlineKeyboardButton(text = "📡 $activeSource (${t("btn_change_source", lang)})", callbackData = "menu:sources")
+                InlineKeyboardButton(text = t("btn_lang", lang), callbackData = "menu:lang"),
+                InlineKeyboardButton(text = t("btn_donate", lang), callbackData = "menu:donate")
             )
         )
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_enabled_sources", lang), callbackData = "menu:enabled_sources"),
-                InlineKeyboardButton(text = t("btn_manage_sources", lang), callbackData = "menu:manage_sources")
+        // Optional Row 5: Admin Panel (only for admins)
+        if (isAdmin) {
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(text = t("btn_admin_panel", lang), callbackData = "menu:admin")
+                )
             )
-        )
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_bookmarks", lang), callbackData = "menu:bookmarks"),
-                InlineKeyboardButton(text = t("btn_repos", lang), callbackData = "menu:repos")
-            )
-        )
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_check_sources", lang), callbackData = "menu:check_sources")
-            )
-        )
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_donate", lang), callbackData = "menu:donate"),
-                InlineKeyboardButton(text = t("btn_lang", lang), callbackData = "menu:lang")
-            )
-        )
+        }
         return InlineKeyboardMarkup(rows)
     }
 
@@ -183,13 +187,15 @@ class BotRunner(private val bot: TelegramClient) {
         val chatId = message.chat.id
         val text = message.text?.trim() ?: return
         val userId = message.from?.id ?: chatId
+        Database.ensureUser(userId)
         val lang = Database.getUserLanguage(userId)
         val activeSource = Database.getUserSource(userId)
+        val isAdmin = Config.isAdmin(userId)
 
         when {
             text.startsWith("/start") -> {
                 userSearchPending.remove(userId)
-                bot.sendMessage(chatId, t("welcome", lang), replyMarkup = getMainMenuKeyboard(lang, activeSource))
+                bot.sendMessage(chatId, t("welcome", lang), replyMarkup = getMainMenuKeyboard(lang, activeSource, isAdmin))
             }
 
             text.startsWith("/ping") -> {
@@ -232,26 +238,16 @@ class BotRunner(private val bot: TelegramClient) {
                 showFeedScreen(chatId, userId, lang, "latest")
             }
 
-            text.startsWith("/sources") -> {
-                showSourcesMenu(chatId, userId, lang)
-            }
-
-            text.startsWith("/manage_sources") -> {
-                showManageSourcesStep1(chatId, userId, lang)
-            }
-
-            text.startsWith("/enabled_sources") -> {
-                showEnabledSourcesScreen(chatId, userId, lang)
+            text.startsWith("/sources") || text.startsWith("/manage_sources") || text.startsWith("/enabled_sources") -> {
+                showSourcesManager(chatId, userId, lang)
             }
 
             text.startsWith("/search") -> {
                 val query = text.removePrefix("/search").trim()
                 if (query.isBlank()) {
-                    // Prompt user to choose which source to search in first
-                    promptPickSourceToSearch(chatId, userId, lang)
+                    bot.sendMessage(chatId, t("search_prompt_direct", lang, activeSource))
                 } else {
-                    // User supplied a query: prompt to choose source for this query
-                    promptChooseSourceForQuery(chatId, userId, lang, query)
+                    executeSearch(chatId, userId, lang, activeSource, query)
                 }
             }
 
@@ -312,11 +308,15 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             text.startsWith("/repos") -> {
-                showReposSummary(chatId, lang)
+                if (!isAdmin) {
+                    bot.sendMessage(chatId, t("admin_only", lang))
+                } else {
+                    showReposSummary(chatId, lang)
+                }
             }
 
             text.startsWith("/sync") -> {
-                if (!Config.isAdmin(userId)) {
+                if (!isAdmin) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                     return
                 }
@@ -327,7 +327,7 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             text.startsWith("/addrepo") -> {
-                if (!Config.isAdmin(userId)) {
+                if (!isAdmin) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                     return
                 }
@@ -354,15 +354,9 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             else -> {
-                // User sent title text directly
-                val pendingSource = userSearchPending.remove(userId)
-                if (pendingSource != null) {
-                    // User had explicitly selected a source just before typing
-                    executeSearch(chatId, userId, lang, pendingSource, text)
-                } else {
-                    // Let user select which source to search in for this query
-                    promptChooseSourceForQuery(chatId, userId, lang, text)
-                }
+                // User sent title text directly: search active source immediately
+                val targetSource = userSearchPending.remove(userId) ?: activeSource
+                executeSearch(chatId, userId, lang, targetSource, text)
             }
         }
     }
@@ -557,69 +551,128 @@ class BotRunner(private val bot: TelegramClient) {
         )
     }
 
+    private suspend fun showSourcesManager(
+        chatId: Long,
+        userId: Long,
+        lang: String,
+        filterLang: String = "all",
+        page: Int = 0,
+        messageId: Long? = null
+    ) {
+        val activeSource = Database.getUserSource(userId)
+        val sources = CloudStreamRepoManager.getAggregatedSources(filterLang)
+        val pageSize = 6
+        val totalPages = max(1, (sources.size + pageSize - 1) / pageSize)
+        val safePage = page.coerceIn(0, totalPages - 1)
+        val pageSources = sources.drop(safePage * pageSize).take(pageSize)
+
+        val rows = mutableListOf<List<InlineKeyboardButton>>()
+
+        // Language Filter Tabs: [ 🌐 All ] [ 🇬🇧 EN ] [ 🇮🇷 FA ] [ 🇸🇦 AR ]
+        val topLangs = listOf("all", "en", "fa", "ar")
+        val tabButtons = topLangs.map { l ->
+            val isSelected = l.equals(filterLang, ignoreCase = true)
+            val flag = when (l) {
+                "all" -> "🌐"
+                "en" -> "🇬🇧"
+                "fa" -> "🇮🇷"
+                "ar" -> "🇸🇦"
+                else -> "🏳️"
+            }
+            val title = when (l) {
+                "all" -> if (lang == "fa") "همه" else "All"
+                "en" -> "EN"
+                "fa" -> "FA"
+                "ar" -> "AR"
+                else -> l.uppercase()
+            }
+            val label = if (isSelected) "• $flag $title •" else "$flag $title"
+            val token = CallbackTokenCache.put(SourceBrowserRef(l, 0))
+            InlineKeyboardButton(text = label, callbackData = "src_lang:$token")
+        }
+        rows.add(tabButtons)
+
+        // Sources rows: Left button = Set Active, Right button = 1-click Toggle
+        for (src in pageSources) {
+            val isActive = src.name.equals(activeSource, ignoreCase = true) ||
+                    src.name.startsWith(activeSource, ignoreCase = true) ||
+                    activeSource.startsWith(src.name, ignoreCase = true)
+            val isEnabled = Database.isSourceEnabled(userId, src.name)
+
+            val actionToken = CallbackTokenCache.put(SourceActionRef(filterLang, safePage, src.name))
+            val selectLabel = if (isActive) "🔘 ${src.name}" else "📡 ${src.name}"
+            val selectCb = if (isActive) "noop" else "src_set:$actionToken"
+
+            val toggleLabel = if (isEnabled) "✅" else "❌"
+            val toggleCb = "src_tog:$actionToken"
+
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(text = selectLabel, callbackData = selectCb),
+                    InlineKeyboardButton(text = toggleLabel, callbackData = toggleCb)
+                )
+            )
+        }
+
+        // Pagination row if totalPages > 1
+        if (totalPages > 1) {
+            val navRow = mutableListOf<InlineKeyboardButton>()
+            if (safePage > 0) {
+                val prevToken = CallbackTokenCache.put(SourceBrowserRef(filterLang, safePage - 1))
+                navRow.add(InlineKeyboardButton(text = t("btn_prev", lang), callbackData = "src_page:$prevToken"))
+            }
+            navRow.add(InlineKeyboardButton(text = "📄 ${safePage + 1}/$totalPages", callbackData = "noop"))
+            if (safePage < totalPages - 1) {
+                val nextToken = CallbackTokenCache.put(SourceBrowserRef(filterLang, safePage + 1))
+                navRow.add(InlineKeyboardButton(text = t("btn_next", lang), callbackData = "src_page:$nextToken"))
+            }
+            rows.add(navRow)
+        }
+
+        // Navigation bottom row
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_check_sources", lang), callbackData = "menu:check_sources"),
+                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+            )
+        )
+
+        val header = t("sources_manager_title", lang, activeSource)
+        val keyboard = InlineKeyboardMarkup(rows)
+
+        if (messageId != null) {
+            val ed = bot.editMessageText(chatId, messageId, header, replyMarkup = keyboard)
+            if (!ed) bot.sendMessage(chatId, header, replyMarkup = keyboard)
+        } else {
+            bot.sendMessage(chatId, header, replyMarkup = keyboard)
+        }
+    }
+
     private suspend fun showSourcesMenu(
         chatId: Long,
         userId: Long,
         lang: String,
         messageId: Long? = null
     ) {
-        val activeSource = Database.getUserSource(userId)
-        val enabledSources = Database.getEnabledSources(userId)
+        showSourcesManager(chatId, userId, lang, messageId = messageId)
+    }
 
-        val rows = mutableListOf<List<InlineKeyboardButton>>()
+    private suspend fun showEnabledSourcesScreen(
+        chatId: Long,
+        userId: Long,
+        lang: String,
+        messageId: Long? = null
+    ) {
+        showSourcesManager(chatId, userId, lang, messageId = messageId)
+    }
 
-        if (enabledSources.isEmpty()) {
-            val msgText = t("no_enabled_sources", lang)
-            val kb = InlineKeyboardMarkup(
-                listOf(
-                    listOf(InlineKeyboardButton(text = t("btn_manage_sources", lang), callbackData = "menu:manage_sources")),
-                    listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close"))
-                )
-            )
-            if (messageId != null) {
-                val ed = bot.editMessageText(chatId, messageId, msgText, replyMarkup = kb)
-                if (!ed) bot.sendMessage(chatId, msgText, replyMarkup = kb)
-            } else {
-                bot.sendMessage(chatId, msgText, replyMarkup = kb)
-            }
-            return
-        }
-
-        // List all enabled sources cleanly
-        for (src in enabledSources) {
-            val isCurrent = src.equals(activeSource, ignoreCase = true) ||
-                    src.startsWith(activeSource, ignoreCase = true) ||
-                    activeSource.startsWith(src, ignoreCase = true)
-            val icon = if (isCurrent) "🔘 " else "📡 "
-            rows.add(
-                listOf(
-                    InlineKeyboardButton(
-                        text = "$icon$src",
-                        callbackData = "setsource:$src"
-                    )
-                )
-            )
-        }
-
-        // Navigation row
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_manage_sources", lang), callbackData = "menu:manage_sources"),
-                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
-            )
-        )
-
-        val keyboard = InlineKeyboardMarkup(rows)
-        val text = t("choose_source", lang, activeSource)
-
-        if (messageId != null) {
-            val edited = bot.editMessageText(chatId, messageId, text, replyMarkup = keyboard)
-            if (!edited) {
-                bot.sendMessage(chatId, text, replyMarkup = keyboard)
-            }
-        } else {
-            bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        }
+    private suspend fun showManageSourcesStep1(
+        chatId: Long,
+        userId: Long,
+        lang: String,
+        messageId: Long? = null
+    ) {
+        showSourcesManager(chatId, userId, lang, messageId = messageId)
     }
 
     private suspend fun showFeedScreen(
@@ -767,247 +820,6 @@ class BotRunner(private val bot: TelegramClient) {
         }
     }
 
-    private suspend fun showEnabledSourcesScreen(
-        chatId: Long,
-        userId: Long,
-        lang: String,
-        messageId: Long? = null
-    ) {
-        val enabled = Database.getEnabledSources(userId)
-        val activeSource = Database.getUserSource(userId)
-
-        val rows = mutableListOf<List<InlineKeyboardButton>>()
-
-        if (enabled.isEmpty()) {
-            val msgText = t("no_enabled_sources", lang)
-            val kb = InlineKeyboardMarkup(
-                listOf(
-                    listOf(InlineKeyboardButton(text = t("btn_manage_sources", lang), callbackData = "menu:manage_sources")),
-                    listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close"))
-                )
-            )
-            if (messageId != null) {
-                val ed = bot.editMessageText(chatId, messageId, msgText, replyMarkup = kb)
-                if (!ed) bot.sendMessage(chatId, msgText, replyMarkup = kb)
-            } else {
-                bot.sendMessage(chatId, msgText, replyMarkup = kb)
-            }
-            return
-        }
-
-        // List all enabled sources; clicking sets it as active search source
-        for (src in enabled) {
-            val isActive = src.equals(activeSource, ignoreCase = true) ||
-                    src.startsWith(activeSource, ignoreCase = true) ||
-                    activeSource.startsWith(src, ignoreCase = true)
-            val label = if (isActive) "🔘 $src [Active]" else "✅ $src"
-            rows.add(
-                listOf(
-                    InlineKeyboardButton(
-                        text = label,
-                        callbackData = "setsource:$src"
-                    )
-                )
-            )
-        }
-
-        // Action controls
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_manage_sources", lang), callbackData = "menu:manage_sources"),
-                InlineKeyboardButton(text = t("btn_sources", lang), callbackData = "menu:sources")
-            )
-        )
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_search", lang), callbackData = "menu:search"),
-                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
-            )
-        )
-
-        val text = t("enabled_sources_title", lang, enabled.size)
-        val keyboard = InlineKeyboardMarkup(rows)
-
-        if (messageId != null) {
-            val ed = bot.editMessageText(chatId, messageId, text, replyMarkup = keyboard)
-            if (!ed) bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        } else {
-            bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        }
-    }
-
-    private suspend fun showManageSourcesStep1(
-        chatId: Long,
-        userId: Long,
-        lang: String,
-        messageId: Long? = null
-    ) {
-        val repos = CloudStreamRepoManager.getRepositoryNames()
-        val rows = mutableListOf<List<InlineKeyboardButton>>()
-
-        for (repo in repos) {
-            val count = CloudStreamRepoManager.getPluginsForRepo(repo).size
-            val icon = if (repo.contains("built-in", ignoreCase = true)) "⭐" else "📦"
-            val token = CallbackTokenCache.put(repo)
-            rows.add(
-                listOf(
-                    InlineKeyboardButton(
-                        text = "$icon $repo ($count)",
-                        callbackData = "ms_r:$token"
-                    )
-                )
-            )
-        }
-
-        // Navigation
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_enabled_sources", lang), callbackData = "menu:enabled_sources"),
-                InlineKeyboardButton(text = t("btn_sources", lang), callbackData = "menu:sources")
-            )
-        )
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
-            )
-        )
-
-        val text = t("step_choose_provider", lang)
-        val keyboard = InlineKeyboardMarkup(rows)
-
-        if (messageId != null) {
-            val ed = bot.editMessageText(chatId, messageId, text, replyMarkup = keyboard)
-            if (!ed) bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        } else {
-            bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        }
-    }
-
-    private suspend fun showManageSourcesStep2(
-        chatId: Long,
-        userId: Long,
-        lang: String,
-        repoName: String,
-        messageId: Long? = null
-    ) {
-        val languages = CloudStreamRepoManager.getLanguagesForRepo(repoName)
-        val rows = mutableListOf<List<InlineKeyboardButton>>()
-
-        val langButtons = languages.map { l ->
-            val label = if (l == "all") t("all_languages", lang) else {
-                when (l.lowercase()) {
-                    "en" -> "🇬🇧 English"
-                    "fa" -> "🇮🇷 فارسی"
-                    "ar" -> "🇸🇦 العربية"
-                    "mx" -> "🇲🇽 Español"
-                    "hi" -> "🇮🇳 Hindi"
-                    "fr" -> "🇫🇷 Français"
-                    "it" -> "🇮🇹 Italiano"
-                    "de" -> "🇩🇪 Deutsch"
-                    "ru" -> "🇷🇺 Russian"
-                    "zh" -> "🇨🇳 Chinese"
-                    "id" -> "🇮🇩 Indonesian"
-                    else -> l.uppercase()
-                }
-            }
-            val refToken = CallbackTokenCache.put(RepoPageRef(repoName, l, 0))
-            InlineKeyboardButton(text = label, callbackData = "ms_l:$refToken")
-        }.chunked(2)
-        rows.addAll(langButtons)
-
-        // Back to Step 1 & Close
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_back", lang), callbackData = "menu:manage_sources"),
-                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
-            )
-        )
-
-        val text = t("step_choose_lang", lang, repoName)
-        val keyboard = InlineKeyboardMarkup(rows)
-
-        if (messageId != null) {
-            val ed = bot.editMessageText(chatId, messageId, text, replyMarkup = keyboard)
-            if (!ed) bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        } else {
-            bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        }
-    }
-
-    private suspend fun showManageSourcesStep3(
-        chatId: Long,
-        userId: Long,
-        lang: String,
-        repoName: String,
-        filterLang: String,
-        page: Int,
-        messageId: Long? = null
-    ) {
-        val plugins = CloudStreamRepoManager.getPluginsForRepo(repoName, filterLang)
-        val pageSize = 8
-        val totalPages = max(1, (plugins.size + pageSize - 1) / pageSize)
-        val safePage = page.coerceIn(0, totalPages - 1)
-        val pagePlugins = plugins.drop(safePage * pageSize).take(pageSize)
-
-        val rows = mutableListOf<List<InlineKeyboardButton>>()
-
-        // Bulk action row
-        val pageRefToken = CallbackTokenCache.put(RepoPageRef(repoName, filterLang, safePage))
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_enable_all", lang), callbackData = "ms_b:$pageRefToken:1"),
-                InlineKeyboardButton(text = t("btn_disable_all", lang), callbackData = "ms_b:$pageRefToken:0")
-            )
-        )
-
-        // Plugin toggle buttons (2 columns)
-        val itemButtons = pagePlugins.map { p ->
-            val isEnabled = Database.isSourceEnabled(userId, p.name)
-            val icon = if (isEnabled) "✅" else "❌"
-            val token = CallbackTokenCache.put(SourceToggleRef(repoName, filterLang, safePage, p.name))
-            InlineKeyboardButton(
-                text = "$icon ${p.name.take(18)}",
-                callbackData = "ms_t:$token"
-            )
-        }.chunked(2)
-        rows.addAll(itemButtons)
-
-        // Pagination row if > 1 page
-        if (totalPages > 1) {
-            val navRow = mutableListOf<InlineKeyboardButton>()
-            if (safePage > 0) {
-                val prevToken = CallbackTokenCache.put(RepoPageRef(repoName, filterLang, safePage - 1))
-                navRow.add(InlineKeyboardButton(text = t("btn_prev", lang), callbackData = "ms_l:$prevToken"))
-            }
-            navRow.add(InlineKeyboardButton(text = "📄 ${safePage + 1}/$totalPages", callbackData = "noop"))
-            if (safePage < totalPages - 1) {
-                val nextToken = CallbackTokenCache.put(RepoPageRef(repoName, filterLang, safePage + 1))
-                navRow.add(InlineKeyboardButton(text = t("btn_next", lang), callbackData = "ms_l:$nextToken"))
-            }
-            rows.add(navRow)
-        }
-
-        // Navigation back row
-        val repoToken = CallbackTokenCache.put(repoName)
-        rows.add(
-            listOf(
-                InlineKeyboardButton(text = t("btn_back", lang), callbackData = "ms_r:$repoToken"),
-                InlineKeyboardButton(text = t("btn_enabled_sources", lang), callbackData = "menu:enabled_sources"),
-                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
-            )
-        )
-
-        val text = t("manage_sources_list", lang, repoName, filterLang)
-        val keyboard = InlineKeyboardMarkup(rows)
-
-        if (messageId != null) {
-            val ed = bot.editMessageText(chatId, messageId, text, replyMarkup = keyboard)
-            if (!ed) bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        } else {
-            bot.sendMessage(chatId, text, replyMarkup = keyboard)
-        }
-    }
-
     private suspend fun handleCallback(callback: CallbackQuery) {
         val chatId = callback.message?.chat?.id ?: return
         val messageId = callback.message.messageId
@@ -1015,7 +827,7 @@ class BotRunner(private val bot: TelegramClient) {
         val userId = callback.from.id
         val lang = Database.getUserLanguage(userId)
 
-        if (isDebounced(userId) && !data.startsWith("setlang:") && !data.startsWith("setsource:") && !data.startsWith("ms_t:") && data != "close" && data != "noop") {
+        if (isDebounced(userId) && !data.startsWith("setlang:") && !data.startsWith("setsource:") && !data.startsWith("src_tog:") && !data.startsWith("src_set:") && !data.startsWith("src_lang:") && !data.startsWith("src_page:") && data != "close" && data != "noop") {
             bot.answerCallbackQuery(callback.id)
             return
         }
@@ -1030,11 +842,12 @@ class BotRunner(private val bot: TelegramClient) {
                 Database.setUserLanguage(userId, newLang)
                 bot.answerCallbackQuery(callback.id, t("lang_changed", newLang), showAlert = true)
                 val activeSource = Database.getUserSource(userId)
+                val isAdmin = Config.isAdmin(userId)
                 bot.editMessageText(
                     chatId,
                     messageId,
                     t("welcome", newLang),
-                    replyMarkup = getMainMenuKeyboard(newLang, activeSource)
+                    replyMarkup = getMainMenuKeyboard(newLang, activeSource, isAdmin)
                 )
             }
 
@@ -1123,79 +936,75 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.answerCallbackQuery(callback.id)
             }
 
-            data == "menu:manage_sources" -> {
-                showManageSourcesStep1(chatId, userId, lang, messageId)
+            data == "menu:sources" || data == "menu:manage_sources" || data == "menu:enabled_sources" -> {
+                showSourcesManager(chatId, userId, lang, messageId = messageId)
                 bot.answerCallbackQuery(callback.id)
             }
 
-            data == "menu:enabled_sources" -> {
-                showEnabledSourcesScreen(chatId, userId, lang, messageId)
-                bot.answerCallbackQuery(callback.id)
-            }
-
-            data.startsWith("ms_r:") -> {
-                val token = data.removePrefix("ms_r:")
-                val repoName = CallbackTokenCache.get<String>(token) ?: "Built-in Sources"
-                showManageSourcesStep2(chatId, userId, lang, repoName, messageId)
-                bot.answerCallbackQuery(callback.id)
-            }
-
-            data.startsWith("ms_l:") -> {
-                val token = data.removePrefix("ms_l:")
-                val ref = CallbackTokenCache.get<RepoPageRef>(token)
+            data.startsWith("src_lang:") -> {
+                val token = data.removePrefix("src_lang:")
+                val ref = CallbackTokenCache.get<SourceBrowserRef>(token)
                 if (ref != null) {
-                    showManageSourcesStep3(chatId, userId, lang, ref.repoName, ref.lang, ref.page, messageId)
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = 0, messageId = messageId)
                 }
                 bot.answerCallbackQuery(callback.id)
             }
 
-            data.startsWith("ms_t:") -> {
-                val token = data.removePrefix("ms_t:")
-                val ref = CallbackTokenCache.get<SourceToggleRef>(token)
+            data.startsWith("src_page:") -> {
+                val token = data.removePrefix("src_page:")
+                val ref = CallbackTokenCache.get<SourceBrowserRef>(token)
+                if (ref != null) {
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, messageId = messageId)
+                }
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data.startsWith("src_set:") -> {
+                val token = data.removePrefix("src_set:")
+                val ref = CallbackTokenCache.get<SourceActionRef>(token)
+                if (ref != null) {
+                    Database.setUserSource(userId, ref.sourceName)
+                    bot.answerCallbackQuery(callback.id, t("source_selected", lang, ref.sourceName))
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, messageId = messageId)
+                } else {
+                    bot.answerCallbackQuery(callback.id, "Session expired")
+                }
+            }
+
+            data.startsWith("src_tog:") -> {
+                val token = data.removePrefix("src_tog:")
+                val ref = CallbackTokenCache.get<SourceActionRef>(token)
                 if (ref != null) {
                     val newStatus = Database.toggleSourceEnabled(userId, ref.sourceName)
                     val toast = if (newStatus) t("source_toggled_on", lang, ref.sourceName) else t("source_toggled_off", lang, ref.sourceName)
                     bot.answerCallbackQuery(callback.id, toast)
-                    showManageSourcesStep3(chatId, userId, lang, ref.repoName, ref.lang, ref.page, messageId)
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, messageId = messageId)
                 } else {
                     bot.answerCallbackQuery(callback.id, "Session expired")
                 }
             }
 
-            data.startsWith("ms_b:") -> {
-                val parts = data.removePrefix("ms_b:").split(":")
-                val refToken = parts.getOrNull(0) ?: ""
-                val enable = parts.getOrNull(1) == "1"
-                val ref = CallbackTokenCache.get<RepoPageRef>(refToken)
-                if (ref != null) {
-                    val plugins = CloudStreamRepoManager.getPluginsForRepo(ref.repoName, ref.lang)
-                    val pageSize = 8
-                    val pagePlugins = plugins.drop(ref.page * pageSize).take(pageSize)
-                    Database.setSourcesBulk(userId, pagePlugins.map { it.name }, enable)
-                    val toast = if (enable) t("bulk_enabled", lang, pagePlugins.size) else t("bulk_disabled", lang, pagePlugins.size)
-                    bot.answerCallbackQuery(callback.id, toast, showAlert = true)
-                    showManageSourcesStep3(chatId, userId, lang, ref.repoName, ref.lang, ref.page, messageId)
+            data == "menu:admin" -> {
+                if (Config.isAdmin(userId)) {
+                    showAdminDashboard(chatId, lang, messageId)
+                    bot.answerCallbackQuery(callback.id)
                 } else {
-                    bot.answerCallbackQuery(callback.id, "Session expired")
+                    bot.answerCallbackQuery(callback.id, t("admin_only", lang), showAlert = true)
                 }
             }
 
-            data.startsWith("filter:") -> {
-                showSourcesMenu(chatId, userId, lang, messageId = messageId)
-                bot.answerCallbackQuery(callback.id)
-            }
-
-            data.startsWith("setsource:") -> {
-                val newSource = data.removePrefix("setsource:")
-                Database.setSourceEnabled(userId, newSource, true)
-                Database.setUserSource(userId, newSource)
-                bot.answerCallbackQuery(callback.id, t("source_changed", lang, newSource), showAlert = true)
-                showSourcesMenu(chatId, userId, lang, messageId = messageId)
+            data == "admin:repos" -> {
+                if (Config.isAdmin(userId)) {
+                    showReposSummary(chatId, lang, messageId)
+                    bot.answerCallbackQuery(callback.id)
+                } else {
+                    bot.answerCallbackQuery(callback.id, t("admin_only", lang), showAlert = true)
+                }
             }
 
             data == "menu:search" -> {
-                // Prompt user to select source first
-                promptPickSourceToSearch(chatId, userId, lang, messageId)
+                val active = Database.getUserSource(userId)
+                bot.sendMessage(chatId, t("search_prompt_direct", lang, active))
                 bot.answerCallbackQuery(callback.id)
             }
 
@@ -1563,7 +1372,10 @@ class BotRunner(private val bot: TelegramClient) {
         val keyboard = InlineKeyboardMarkup(
             listOf(
                 listOf(InlineKeyboardButton(text = t("btn_toggle_nsfw", lang), callbackData = "toggle_nsfw")),
-                listOf(InlineKeyboardButton(text = t("btn_sync", lang), callbackData = "menu:sync")),
+                listOf(
+                    InlineKeyboardButton(text = t("btn_repos", lang), callbackData = "admin:repos"),
+                    InlineKeyboardButton(text = t("btn_sync", lang), callbackData = "menu:sync")
+                ),
                 listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close"))
             )
         )

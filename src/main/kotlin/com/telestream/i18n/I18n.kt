@@ -3,20 +3,21 @@ package com.telestream.i18n
 object I18n {
     private val en = mapOf(
         "welcome" to """
-🎬 *Welcome to TeleStream Bot!*
+🎬 *Welcome to TeleStream!*
 
-Discover and stream movies, TV shows, and anime powered by native CloudStream sources.
+Stream and download movies, series, and anime natively on Telegram.
 
-👇 *Send me any title to search or choose an option below:*
+👇 *Send any title to search directly, or choose an option below:*
 """.trimIndent(),
         "choose_lang" to "🌐 *Please choose your language:*",
         "lang_changed" to "✅ Language set to English.",
         "search_prompt" to "🔍 *Please type the name of the movie or series:*",
+        "search_prompt_direct" to "🔍 *Active Source:* `%s`\n\nSend me the name of any movie or series to search:",
         "search_prompt_source" to "🔍 *Active Source:* `%s`\n\nSend me the name of the movie or series to search in this source:",
-        "searching" to "🔎 *Searching across sources for:* `%s`...",
+        "searching" to "🔎 *Searching for:* `%s`...",
         "searching_in_source" to "🔎 *Searching in `%s` for:* `%s`...",
         "no_results" to "❌ *No results found for:* `%s`\nCheck the spelling or try another title.",
-        "no_results_in_source" to "❌ *No results found in `%s` for:* `%s`\nCheck spelling or switch source with /sources.",
+        "no_results_in_source" to "❌ *No results found in `%s` for:* `%s`\nCheck spelling or try another source.",
         "search_results" to "🎬 *Search results for:* `%s`\nSelect a title below:",
         "details_card" to """
 🎬 *%s* (%s)
@@ -41,7 +42,7 @@ Discover and stream movies, TV shows, and anime powered by native CloudStream so
         "btn_bookmarks" to "⭐ Bookmarks",
         "btn_repos" to "📦 Repositories",
         "btn_sync" to "🔄 Sync Repositories",
-        "btn_donate" to "☕ Donate / Support",
+        "btn_donate" to "☕ Donate",
         "btn_lang" to "🌐 Language / زبان",
         "btn_watch" to "▶️ Watch Online / Download",
         "btn_episodes" to "📺 Episodes",
@@ -67,6 +68,10 @@ Discover and stream movies, TV shows, and anime powered by native CloudStream so
         "sources_health_ok" to "🟢 *%s:* Online (%d ms)",
         "sources_health_fail" to "🔴 *%s:* Offline / Blocked (%s)",
         "choose_source" to "📡 *Select Default Source*\nActive: *%s*\n\n👇 Tap any source to select it:",
+        "sources_manager_title" to "📡 *Movie & Series Sources*\n\nActive Source: *%s*\n• Tap 📡 to set as active provider\n• Tap ✅ / ❌ to enable or disable",
+        "source_selected" to "✅ Active source set to %s",
+        "btn_admin_panel" to "⚙️ Admin Panel",
+        "btn_toggle_nsfw" to "🔞 Toggle NSFW",
         "filter_all" to "🌐 All",
         "filter_fa" to "🇮🇷 Persian",
         "filter_ar" to "🇸🇦 Arabic",
@@ -85,7 +90,7 @@ Discover and stream movies, TV shows, and anime powered by native CloudStream so
         "source_toggled_off" to "❌ Disabled: %s",
         "bulk_enabled" to "✅ Enabled %d sources!",
         "bulk_disabled" to "❌ Disabled %d sources!",
-        "no_enabled_sources" to "⚠️ *You have no enabled sources!* Please go to Manage Sources to enable at least one source.",
+        "no_enabled_sources" to "⚠️ *You have no enabled sources!* Please go to Sources to enable at least one source.",
         "bookmarked" to "⭐ Saved to your bookmarks!",
         "unbookmarked" to "🗑️ Removed from bookmarks.",
         "no_bookmarks" to "📭 You don't have any bookmarks saved.",
@@ -147,18 +152,19 @@ If you enjoy using this bot, please consider supporting development and server c
         "welcome" to """
 🎬 *به ربات تله‌استریم (TeleStream) خوش آمدید!*
 
-جستجو و پخش آنلاین انواع فیلم‌ها، سریال‌ها و انیمه‌ها با پشتیبانی مستقیم از سورس‌های قدرتمند کلوداستریم.
+پخش آنلاین و دانلود مستقیم فیلم‌ها، سریال‌ها و انیمه‌ها در تلگرام.
 
-👇 *نام فیلم یا سریال مورد نظرتان را بفرستید یا از دکمه‌های زیر استفاده کنید:*
+👇 *نام هر عنوان را ارسال کنید تا فوراً جستجو شود، یا از گزینه‌های زیر استفاده کنید:*
 """.trimIndent(),
         "choose_lang" to "🌐 *لطفاً زبان مورد نظر را انتخاب کنید:*",
         "lang_changed" to "✅ زبان به فارسی تغییر کرد.",
         "search_prompt" to "🔍 *نام فیلم یا سریال مورد نظرتان را ارسال کنید:*",
+        "search_prompt_direct" to "🔍 *منبع فعال:* `%s`\n\nنام هر فیلم یا سریالی را برای جستجو ارسال کنید:",
         "search_prompt_source" to "🔍 *منبع فعال:* `%s`\n\nنام فیلم یا سریال مورد نظرتان را برای جستجو در این منبع ارسال کنید:",
         "searching" to "🔎 *در حال جستجو برای:* `%s`...",
         "searching_in_source" to "🔎 *در حال جستجو در `%s` برای:* `%s`...",
         "no_results" to "❌ *نتیجه‌ای برای* `%s` *یافت نشد.*\nلطفاً املای عنوان را بررسی کرده یا نام انگلیسی آن را امتحان کنید.",
-        "no_results_in_source" to "❌ *نتیجه‌ای در منبع `%s` برای* `%s` *یافت نشد.*\nلطفاً املای عنوان را بررسی کنید یا با /sources منبع دیگری انتخاب نمایید.",
+        "no_results_in_source" to "❌ *نتیجه‌ای در منبع `%s` برای* `%s` *یافت نشد.*\nلطفاً املای عنوان را بررسی کنید یا سورس دیگری را امتحان کنید.",
         "search_results" to "🎬 *نتایج جستجو برای:* `%s`\nیکی از عناوین زیر را انتخاب کنید:",
         "details_card" to """
 🎬 *%s* (%s)
@@ -178,12 +184,12 @@ If you enjoy using this bot, please consider supporting development and server c
         "no_links" to "⚠️ *متأسفانه لینک فعالی برای این عنوان یافت نشد.*",
         "btn_webapp" to "🚀 اجرای مینی‌اپ تله‌استریم",
         "btn_search" to "🔍 جستجو",
-        "btn_sources" to "📡 منابع فیلم و سریال",
+        "btn_sources" to "📡 سورس‌ها",
         "btn_change_source" to "📡 تغییر منبع",
         "btn_bookmarks" to "⭐ نشان‌شده‌ها",
         "btn_repos" to "📦 مخازن سورس‌ها",
         "btn_sync" to "🔄 همگام‌سازی مخازن",
-        "btn_donate" to "☕ حمایت مالی (Donate)",
+        "btn_donate" to "☕ حمایت مالی",
         "btn_lang" to "🌐 تغییر زبان / Language",
         "btn_watch" to "▶️ تماشا / دانلود",
         "btn_episodes" to "📺 لیست قسمت‌ها",
@@ -209,6 +215,10 @@ If you enjoy using this bot, please consider supporting development and server c
         "sources_health_ok" to "🟢 *%s:* فعال (%d میلی‌ثانیه)",
         "sources_health_fail" to "🔴 *%s:* مسدود یا قطع (%s)",
         "choose_source" to "📡 *انتخاب سورس پیش‌فرض*\nمنبع فعال: *%s*\n\n👇 جهت تغییر، سورس مورد نظر را انتخاب کنید:",
+        "sources_manager_title" to "📡 *منابع و سورس‌های فیلم و سریال*\n\nمنبع فعال: *%s*\n• روی 📡 برای انتخاب به عنوان منبع فعال بزنید\n• روی ✅ / ❌ برای فعال یا غیرفعال‌سازی بزنید",
+        "source_selected" to "✅ منبع فعال روی %s تنظیم شد",
+        "btn_admin_panel" to "⚙️ پنل مدیریت",
+        "btn_toggle_nsfw" to "🔞 تغییر وضعیت NSFW",
         "filter_all" to "🌐 همه",
         "filter_fa" to "🇮🇷 فارسی",
         "filter_ar" to "🇸🇦 العربية",
@@ -227,7 +237,7 @@ If you enjoy using this bot, please consider supporting development and server c
         "source_toggled_off" to "❌ سورس غیرفعال شد: %s",
         "bulk_enabled" to "✅ تعداد %d سورس فعال شدند!",
         "bulk_disabled" to "❌ تعداد %d سورس غیرفعال شدند!",
-        "no_enabled_sources" to "⚠️ *هیچ سورسی فعال نیست!* لطفاً از بخش مدیریت سورس‌ها حداقل یک سورس را فعال کنید.",
+        "no_enabled_sources" to "⚠️ *هیچ سورسی فعال نیست!* لطفاً از بخش سورس‌ها حداقل یک سورس را فعال کنید.",
         "bookmarked" to "⭐ به نشان‌شده‌های شما افزوده شد!",
         "unbookmarked" to "🗑️ از نشان‌شده‌ها حذف شد.",
         "no_bookmarks" to "📭 هیچ فیلم یا سریالی در لیست نشان‌شده‌های شما نیست.",

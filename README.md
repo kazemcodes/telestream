@@ -140,10 +140,8 @@ java -jar build/libs/telestream-all.jar
 start - Main menu & dashboard
 popular - Popular & trending media
 latest - Latest released movies & series
-sources - Choose active source provider
-enabled_sources - View all enabled sources
-manage_sources - Manage & toggle sources
-search - Search in active source
+search - Search movies & series
+sources - Browse & manage sources
 bookmarks - View saved bookmarks
 language - Change language
 ping - Check bot status
@@ -156,10 +154,8 @@ app - Launch TeleStream Mini App
 start - منوی اصلی و داشبورد
 popular - فیلم‌ها و سریال‌های محبوب و داغ
 latest - جدیدترین فیلم‌ها و سریال‌ها
-sources - انتخاب منبع فیلم و سریال
-enabled_sources - سورس‌های فعال من
-manage_sources - مدیریت و فعال‌سازی سورس‌ها
-search - جستجو در منبع فعال
+search - جستجوی فیلم و سریال
+sources - مشاهده و مدیریت سورس‌ها
 bookmarks - فیلم‌ها و سریال‌های نشان‌شده
 language - تغییر زبان / Change Language
 ping - وضعیت آنلاین ربات
@@ -173,21 +169,21 @@ app - اجرای مینی‌اپ تله‌استریم
 
 | Command | Access | Description |
 | :--- | :--- | :--- |
-| `/start` | Public | 🎬 Main menu, dashboard, and quick navigation |
-| `/sources` | Public | 📡 Select active source provider for search |
-| `/enabled_sources` | Public | 📋 View your currently enabled sources |
-| `/manage_sources` | Public | ⚙️ 3-Step manager to enable/disable sources (Provider &rarr; Lang &rarr; Toggle) |
-| `/search [title]` | Public | 🔍 Search movies & series in your active source |
+| `/start` | Public | 🎬 Streamlined main menu and quick navigation |
+| `/sources` | Public | 📡 Browse, toggle, and set active streaming sources |
+| `/search [title]` | Public | 🔍 Direct instant search in your active source |
+| `/popular` | Public | 🔥 Popular & trending movies and series |
+| `/latest` | Public | 🆕 Latest movie and series releases |
 | `/bookmarks` | Public | ⭐ View and manage saved movies/shows |
 | `/language` | Public | 🌐 Switch language (English / فارسی) |
 | `/ping` | Public | 🏓 Check bot latency and online status |
 | `/donate` | Public | 💎 Show crypto donation addresses (USDT, TON, BTC, ETH) |
 | `/app` | Public | 🚀 Launch TeleStream Mini App (WebUI) |
-| `/repos` | Public | 📦 View synced CloudStream repositories & plugins |
-| `/admin` | Admin | 📊 Interactive dashboard (stats, memory, NSFW toggle) |
-| `/nsfw <on\|off>` | Admin | 🔞 Enable or restrict adult content across scrapers |
+| `/admin` | Admin | 📊 Interactive dashboard (stats, memory, NSFW toggle, repositories) |
+| `/repos` | Admin | 📦 View synced CloudStream repositories & plugins |
 | `/sync` | Admin | 🔄 Re-fetch extension lists from `cloudstreamrepo.com` |
 | `/addrepo <url>` | Admin | ➕ Fetch and index a custom repository URL |
+| `/nsfw <on\|off>` | Admin | 🔞 Enable or restrict adult content across scrapers |
 
 ---
 

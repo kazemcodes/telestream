@@ -23,4 +23,24 @@ class RepoManagerTest {
         assertNotNull(summary["totalPlugins"])
         assertNotNull(summary["totalRepositories"])
     }
+
+    @Test
+    fun testAggregatedSources() {
+        val allSources = CloudStreamRepoManager.getAllAggregatedSources()
+        assertTrue(allSources.isNotEmpty())
+        assertTrue(allSources.any { it.name == "KissKH" })
+        assertTrue(allSources.any { it.name == "AvaMovie" })
+        assertTrue(allSources.any { it.name == "FaselHD" })
+
+        val enSources = CloudStreamRepoManager.getAggregatedSources("en")
+        assertTrue(enSources.any { it.name == "KissKH" })
+
+        val faSources = CloudStreamRepoManager.getAggregatedSources("fa")
+        assertTrue(faSources.any { it.name == "AvaMovie" })
+
+        val langs = CloudStreamRepoManager.getAllSourceLanguages()
+        assertTrue(langs.contains("all"))
+        assertTrue(langs.contains("en"))
+        assertTrue(langs.contains("fa"))
+    }
 }

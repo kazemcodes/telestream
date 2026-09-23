@@ -5,6 +5,7 @@ import com.telestream.bot.BotRunner
 import com.telestream.config.Config
 import com.telestream.database.Database
 import com.telestream.providers.ProviderManager
+import com.telestream.repo.CloudStreamRepoManager
 import com.telestream.telegram.BotCommand
 import com.telestream.telegram.MenuButton
 import com.telestream.telegram.TelegramClient
@@ -179,10 +180,8 @@ fun main(): Unit = runBlocking {
                     BotCommand("start", "🎬 Main Menu & Dashboard"),
                     BotCommand("popular", "🔥 Popular & Trending Movies/Series"),
                     BotCommand("latest", "🆕 Latest Releases"),
-                    BotCommand("search", "🔍 Search in Active Source"),
-                    BotCommand("sources", "📡 Choose Source Provider"),
-                    BotCommand("enabled_sources", "📋 View Enabled Sources"),
-                    BotCommand("manage_sources", "⚙️ Manage / Toggle Sources"),
+                    BotCommand("search", "🔍 Search Movies & Series"),
+                    BotCommand("sources", "📡 Movie & Series Sources"),
                     BotCommand("bookmarks", "⭐ Saved Bookmarks"),
                     BotCommand("language", "🌐 Change Language / تغییر زبان"),
                     BotCommand("check_sources", "🩺 Check Sources Health & Status"),
@@ -194,10 +193,8 @@ fun main(): Unit = runBlocking {
                     BotCommand("start", "🎬 منوی اصلی و داشبورد"),
                     BotCommand("popular", "🔥 فیلم‌ها و سریال‌های محبوب و داغ"),
                     BotCommand("latest", "🆕 جدیدترین فیلم‌ها و سریال‌ها"),
-                    BotCommand("search", "🔍 جستجو در منبع فعال"),
-                    BotCommand("sources", "📡 انتخاب منبع فیلم و سریال"),
-                    BotCommand("enabled_sources", "📋 سورس‌های فعال من"),
-                    BotCommand("manage_sources", "⚙️ مدیریت و فعال‌سازی سورس‌ها"),
+                    BotCommand("search", "🔍 جستجوی فیلم و سریال"),
+                    BotCommand("sources", "📡 منابع و سورس‌های فیلم و سریال"),
                     BotCommand("bookmarks", "⭐ فیلم‌ها و سریال‌های نشان‌شده"),
                     BotCommand("language", "🌐 تغییر زبان / Change Language"),
                     BotCommand("check_sources", "🩺 تست سلامت و اتصال سورس‌ها"),
@@ -206,6 +203,19 @@ fun main(): Unit = runBlocking {
                 client.setMyCommands(faCommands, languageCode = "fa")
             } catch (e: Exception) {
                 logger.warn("Failed registering bot commands: ${e.message}")
+            }
+        }
+
+        // Asynchronously sync community repositories in the background if only default seeds present
+        launch {
+            try {
+                if (CloudStreamRepoManager.getAllPlugins().size <= 4) {
+                    logger.info("Syncing community repositories in background...")
+                    CloudStreamRepoManager.syncAllDefaults()
+                    logger.info("Community repositories synced: ${CloudStreamRepoManager.getAllPlugins().size} plugins ready.")
+                }
+            } catch (e: Exception) {
+                logger.warn("Background repo sync skipped: ${e.message}")
             }
         }
 

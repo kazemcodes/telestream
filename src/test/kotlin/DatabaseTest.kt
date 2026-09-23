@@ -55,4 +55,40 @@ class DatabaseTest {
         val totalBookmarks = Database.getTotalBookmarks()
         assertTrue(totalBookmarks >= 0)
     }
+
+    @Test
+    fun testEnsureUserSmartDefaults() {
+        val enUser = 111222333L
+        Database.ensureUser(enUser, "en")
+        assertEquals("en", Database.getUserLanguage(enUser))
+        assertEquals("KissKH", Database.getUserSource(enUser))
+        assertTrue(Database.isSourceEnabled(enUser, "KissKH"))
+
+        val faUser = 444555666L
+        Database.ensureUser(faUser, "fa")
+        assertEquals("fa", Database.getUserLanguage(faUser))
+        assertEquals("AvaMovie", Database.getUserSource(faUser))
+        assertTrue(Database.isSourceEnabled(faUser, "AvaMovie"))
+        assertTrue(Database.isSourceEnabled(faUser, "KissKH"))
+    }
+
+    @Test
+    fun testUserSourceToggling() {
+        val testUser = 777666555L
+        Database.ensureUser(testUser, "en")
+        // Initially FaselHD is disabled for this user
+        assertFalse(Database.isSourceEnabled(testUser, "FaselHD"))
+
+        // Toggle on
+        Database.toggleSourceEnabled(testUser, "FaselHD")
+        assertTrue(Database.isSourceEnabled(testUser, "FaselHD"))
+
+        // Set as active
+        Database.setUserSource(testUser, "FaselHD")
+        assertEquals("FaselHD", Database.getUserSource(testUser))
+
+        // Toggle off
+        Database.toggleSourceEnabled(testUser, "FaselHD")
+        assertFalse(Database.isSourceEnabled(testUser, "FaselHD"))
+    }
 }
