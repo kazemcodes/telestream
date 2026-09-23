@@ -99,4 +99,24 @@ class HeadlessWebViewAndDispatcherTest {
         val resolver = WebViewResolver(interceptPattern)
         assertNotNull(resolver, "WebViewResolver should instantiate successfully")
     }
+
+    @Test
+    fun testCommonActivityIsFragmentActivity() {
+        val act = com.lagradost.cloudstream3.CommonActivity.activity
+        assertNotNull(act, "CommonActivity.activity must not be null")
+        assertTrue(act is androidx.fragment.app.FragmentActivity, "CommonActivity.activity must be an instance of FragmentActivity")
+        val fragAct = act as androidx.fragment.app.FragmentActivity
+        kotlin.test.assertFalse(fragAct.isFinishing(), "FragmentActivity should not be finishing")
+        kotlin.test.assertFalse(fragAct.isDestroyed(), "FragmentActivity should not be destroyed")
+        assertNotNull(fragAct.getSupportFragmentManager(), "getSupportFragmentManager must return non-null manager")
+    }
+
+    @Test
+    fun testFlareSolverrManagerStatus() {
+        val url = com.telestream.network.FlareSolverrManager.defaultUrl
+        assertTrue(url.contains("8191"), "Default FlareSolverr URL must target port 8191")
+        // Calling isAvailable should return boolean cleanly without unhandled exception
+        val available = com.telestream.network.FlareSolverrManager.isAvailable()
+        println("FlareSolverr status on $url: available=$available")
+    }
 }

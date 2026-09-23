@@ -2299,7 +2299,22 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.answerCallbackQuery(callback.id, t("resolving_links", lang).take(40))
                 val details = ProviderManager.load(ref.provider, ref.url)
                 if (details == null) {
-                    bot.sendMessage(chatId, "⚠️ Could not load media details.")
+                    val rawUrl = ref.url.takeIf { it.startsWith("http") }
+                    val webUrl = sanitizeTelegramUrl(rawUrl)
+                    val fallbackButtons = mutableListOf<List<InlineKeyboardButton>>()
+                    if (!webUrl.isNullOrBlank()) {
+                        fallbackButtons.add(
+                            listOf(
+                                InlineKeyboardButton(
+                                    text = t("btn_open_browser", lang),
+                                    url = webUrl
+                                )
+                            )
+                        )
+                    }
+                    fallbackButtons.add(listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")))
+                    val errorMsg = t("load_failed_open_web", lang, ref.provider)
+                    bot.sendMessage(chatId, errorMsg, replyMarkup = InlineKeyboardMarkup(fallbackButtons))
                     return
                 }
 
@@ -2392,7 +2407,27 @@ class BotRunner(private val bot: TelegramClient) {
                     return
                 }
 
-                val details = ProviderManager.load(ref.provider, ref.url) ?: return
+                val details = ProviderManager.load(ref.provider, ref.url)
+                if (details == null) {
+                    val rawUrl = ref.url.takeIf { it.startsWith("http") }
+                    val webUrl = sanitizeTelegramUrl(rawUrl)
+                    val fallbackButtons = mutableListOf<List<InlineKeyboardButton>>()
+                    if (!webUrl.isNullOrBlank()) {
+                        fallbackButtons.add(
+                            listOf(
+                                InlineKeyboardButton(
+                                    text = t("btn_open_browser", lang),
+                                    url = webUrl
+                                )
+                            )
+                        )
+                    }
+                    fallbackButtons.add(listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")))
+                    val errorMsg = t("load_failed_open_web", lang, ref.provider)
+                    bot.sendMessage(chatId, errorMsg, replyMarkup = InlineKeyboardMarkup(fallbackButtons))
+                    bot.answerCallbackQuery(callback.id)
+                    return
+                }
                 val episodes = details.episodes ?: emptyList()
 
                 if (episodes.isEmpty()) {
