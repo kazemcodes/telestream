@@ -48,55 +48,48 @@ object CloudStreamRepoManager {
     private val reposDir = File("data/repos").apply { mkdirs() }
     private val pluginsFile = File(reposDir, "all_plugins.json")
 
-    // Pre-configured curated repositories from user & community
+    // Pre-configured curated repositories from user & community (verified active September 2026)
     val DEFAULT_REPOS = listOf(
         RepositoryInfo(
-            id = "recloudstream",
-            name = "CloudStream Official",
+            id = "cspr",
+            name = "Official CloudStream",
             url = "https://raw.githubusercontent.com/recloudstream/extensions/master/repo.json",
-            description = "Official CloudStream extensions repository",
+            description = "The only official CloudStream repository",
+            pluginsCount = 0
+        ),
+        RepositoryInfo(
+            id = "phisherrepo",
+            name = "Phisher Providers",
+            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json",
+            description = "Plugins in English, Hindi, and multi-language (StreamPlay, SuperStream, XDMovies, HiAnime, Kisskh, FourKHDHub, YTS)",
             pluginsCount = 0
         ),
         RepositoryInfo(
             id = "megarepo",
             name = "MegaRepo",
             url = "https://raw.githubusercontent.com/self-similarity/MegaRepo/builds/repo.json",
-            description = "Multi-source mega extensions repository",
+            description = "CloudStream MegaRepo aggregator",
             pluginsCount = 0
         ),
         RepositoryInfo(
-            id = "phisher98",
-            name = "Phisher Providers",
-            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json",
-            description = "CloudStream extensions by Phisher",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "csx-saurabh",
+            id = "csx",
             name = "CSX",
             url = "https://raw.githubusercontent.com/SaurabhKaperwan/CSX/builds/CS.json",
-            description = "Indian & International streaming providers",
+            description = "Hindi and English content (CineStream, MoviesDrive, VegaMovies, Bollyflix)",
             pluginsCount = 0
         ),
         RepositoryInfo(
-            id = "re-3arabi",
-            name = "Re-3arabi",
-            url = "https://raw.githubusercontent.com/Abodabodd/re-3arabi/refs/heads/main/repo",
-            description = "Arabic & Regional movies and series",
+            id = "indflix",
+            name = "Indflix",
+            url = "https://raw.githubusercontent.com/dipender98/Indflix/builds/repo.json",
+            description = "English, Original and Indian Languages (IndStream, Multimovies, Vegamovies)",
             pluginsCount = 0
         ),
         RepositoryInfo(
-            id = "indostream",
+            id = "indos",
             name = "IndoStream",
             url = "https://raw.githubusercontent.com/TeKuma25/IndoStream/builds/repo.json",
-            description = "Indonesian & Asian streaming extensions",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "extcloud",
-            name = "ExtCloud",
-            url = "https://raw.githubusercontent.com/duro92/ExtCloud/main/repo.json",
-            description = "Extended CloudStream providers",
+            description = "Indonesian, Anime and Asian streaming providers",
             pluginsCount = 0
         ),
         RepositoryInfo(
@@ -110,70 +103,35 @@ object CloudStreamRepoManager {
             id = "dogior",
             name = "doGior Repo",
             url = "https://raw.githubusercontent.com/doGior/doGiorsHadEnough/refs/heads/builds/repo.json",
-            description = "doGior CloudStream extensions",
+            description = "doGior CloudStream extensions (StreamingCommunity, AnimeWorld, Arte, TV)",
             pluginsCount = 0
         ),
         RepositoryInfo(
-            id = "cncverse",
-            name = "CNCVerse",
-            url = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/refs/heads/builds/CNC.json",
-            description = "CNCVerse streaming providers",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "pastebin-qnd",
-            name = "Curated Community 1",
+            id = "italia-streaming",
+            name = "ItaliaInStreaming",
             url = "https://pastebin.com/raw/qndZtL6D",
-            description = "Community curated providers list",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "cs-karma",
-            name = "Cs-Karma",
-            url = "https://raw.githubusercontent.com/Kraptor123/cs-Karma/refs/heads/master/repo.json",
-            description = "Multi-language, English, Anime, and Sports streams",
+            description = "Italian repository (AltaDefinizione, AnimeSaturn, StreamingCommunity, etc.)",
             pluginsCount = 0
         ),
         RepositoryInfo(
             id = "uk-extensions",
             name = "UK Extensions",
             url = "https://codeberg.org/CakesTwix/cloudstream-extensions-uk/raw/branch/master/repo.json",
-            description = "UK TV, movies & sports streams",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "pitipitii",
-            name = "Pitipitii",
-            url = "https://raw.githubusercontent.com/sarapcanagii/Pitipitii/master/repo.json",
-            description = "Turkish & International streams",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "lietrepo",
-            name = "LietRepo",
-            url = "https://raw.githubusercontent.com/lawlietbr/lietrepo/refs/heads/main/builds/repo.json",
-            description = "Portuguese & Brazilian media streams",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "pastebin-cd2",
-            name = "Curated Community 2",
-            url = "https://pastebin.com/raw/Cd2g2tfz",
-            description = "Community curated media providers",
+            description = "Ukrainian and European providers (Eneyida, UAFlix, Uakino, UASerialsPro)",
             pluginsCount = 0
         ),
         RepositoryInfo(
             id = "italian-provider",
-            name = "Italian Providers",
+            name = "Italian Provider",
             url = "https://raw.githubusercontent.com/Gian-Fr/ItalianProvider/builds/repo.json",
-            description = "Italian movies & series providers",
+            description = "Italian providers (Altadefinizione, GuardaSerie)",
             pluginsCount = 0
         ),
         RepositoryInfo(
-            id = "netmirror",
-            name = "NetMirror",
-            url = "https://raw.githubusercontent.com/Sushan64/NetMirror-Extension/refs/heads/builds/Netflix.json",
-            description = "NetMirror streaming extensions",
+            id = "reflex1337",
+            name = "ReflexRepo",
+            url = "https://raw.githubusercontent.com/Reflex755/ReflexRepo/refs/heads/builds/repo.json",
+            description = "Reflex repository (DiviCast, LibraryOfLadev)",
             pluginsCount = 0
         ),
         RepositoryInfo(
@@ -184,17 +142,38 @@ object CloudStreamRepoManager {
             pluginsCount = 0
         ),
         RepositoryInfo(
+            id = "german-providers",
+            name = "German Providers",
+            url = "https://raw.githubusercontent.com/Bnyro/GermanProviders/refs/heads/master/repo.json",
+            description = "German movies & TV series providers (Aniworld, HDFilme, Megakino)",
+            pluginsCount = 0
+        ),
+        RepositoryInfo(
+            id = "luna712",
+            name = "Luna712",
+            url = "https://raw.githubusercontent.com/Luna712/Luna712-CloudStream-Extensions/28885d17ceb7f24782b732b6056085c14c1fd027/repo.json",
+            description = "Luna712 media extensions (Dailymotion, InternetArchive)",
+            pluginsCount = 0
+        ),
+        RepositoryInfo(
+            id = "lietrepo",
+            name = "LietRepo",
+            url = "https://raw.githubusercontent.com/lawlietbr/lietrepo/refs/heads/main/builds/repo.json",
+            description = "Portuguese & Brazilian media streams (AnimeFire, CineAgora, StreamFlix)",
+            pluginsCount = 0
+        ),
+        RepositoryInfo(
+            id = "cncverse",
+            name = "CNCVerse",
+            url = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/refs/heads/builds/CNC.json",
+            description = "CNCVerse streaming providers (CastleTV, MovieBox, Cricify)",
+            pluginsCount = 0
+        ),
+        RepositoryInfo(
             id = "saimuelrepo",
             name = "SaimuelRepo",
             url = "https://raw.githubusercontent.com/saimuelbr/saimuelrepo/refs/heads/main/builds/repo.json",
             description = "Portuguese & Latin streaming providers",
-            pluginsCount = 0
-        ),
-        RepositoryInfo(
-            id = "cuxplug",
-            name = "CuxPlug",
-            url = "https://raw.githubusercontent.com/ycngmn/CuxPlug/refs/heads/main/repo.json",
-            description = "CuxPlug streaming extensions",
             pluginsCount = 0
         ),
         RepositoryInfo(
@@ -205,53 +184,70 @@ object CloudStreamRepoManager {
             pluginsCount = 0
         ),
         RepositoryInfo(
-            id = "cs-kraptor",
-            name = "Cs-Kraptor",
-            url = "https://raw.githubusercontent.com/Kraptor123/cs-kraptor/refs/heads/master/repo.json",
-            description = "Kraptor provider collection",
+            id = "cxxx",
+            name = "CXXX (18+)",
+            url = "https://raw.githubusercontent.com/phisher98/CXXX/builds/CXXX.json",
+            description = "Adult streaming extensions (18+)",
             pluginsCount = 0
         ),
         RepositoryInfo(
-            id = "german-providers",
-            name = "German Providers",
-            url = "https://raw.githubusercontent.com/Bnyro/GermanProviders/refs/heads/master/repo.json",
-            description = "German movies & TV series providers",
+            id = "gizlikeyif",
+            name = "GizliKeyif (18+)",
+            url = "https://raw.githubusercontent.com/Kraptor123/Cs-GizliKeyif/refs/heads/master/repo.json",
+            description = "Turkish & International adult extensions (18+)",
             pluginsCount = 0
+        )
+    )
+
+    // Seed essential providers verified to download and run reliably
+    val seedPlugins = listOf(
+        PluginMetadata(
+            name = "KissKH",
+            internalName = "KissKH",
+            url = "https://raw.githubusercontent.com/Kraptor123/Cs-Karma/builds/KissKH.cs3",
+            repositoryName = "Cs-Karma",
+            language = "en",
+            description = "Asian dramas, movies, and anime"
         ),
-        RepositoryInfo(
-            id = "luna712",
-            name = "Luna712",
-            url = "https://raw.githubusercontent.com/Luna712/Luna712-CloudStream-Extensions/28885d17ceb7f24782b732b6056085c14c1fd027/repo.json",
-            description = "Luna712 media extensions",
-            pluginsCount = 0
+        PluginMetadata(
+            name = "StreamPlay",
+            internalName = "StreamPlay",
+            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/builds/StreamPlay.cs3",
+            repositoryName = "Phisher Providers",
+            language = "en",
+            description = "Movies and TV series aggregator"
         ),
-        RepositoryInfo(
-            id = "french-cs",
-            name = "French CS",
-            url = "https://raw.githubusercontent.com/zzikozz/frenchCS/refs/heads/main/repo.json",
-            description = "French streaming and anime providers",
-            pluginsCount = 0
+        PluginMetadata(
+            name = "XDMovies",
+            internalName = "XDMovies",
+            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/builds/XDMovies.cs3",
+            repositoryName = "Phisher Providers",
+            language = "en",
+            description = "HD movies, series, and direct cloud streams"
         ),
-        RepositoryInfo(
-            id = "gramflix",
-            name = "GramFlix",
-            url = "https://raw.githubusercontent.com/tOntOnbOuLii/GramFlix/main/repo.json",
-            description = "GramFlix media extensions",
-            pluginsCount = 0
+        PluginMetadata(
+            name = "SuperStream",
+            internalName = "SuperStream",
+            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/builds/SuperStream.cs3",
+            repositoryName = "Phisher Providers",
+            language = "en",
+            description = "High-speed multi-quality movies and TV shows"
         ),
-        RepositoryInfo(
-            id = "hexated",
-            name = "Hexated Providers",
-            url = "https://raw.githubusercontent.com/Hexated/Cloudstream-Extensions/builds/repo.json",
-            description = "Popular English Movies, Anime, and Series",
-            pluginsCount = 0
+        PluginMetadata(
+            name = "HiAnime",
+            internalName = "HiAnime",
+            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/builds/HiAnime.cs3",
+            repositoryName = "Phisher Providers",
+            language = "en",
+            description = "Anime series and movies streaming"
         ),
-        RepositoryInfo(
-            id = "stormunblessed",
-            name = "Stormunblessed",
-            url = "https://raw.githubusercontent.com/stormunblessed/stormunblessed-cs3/builds/repo.json",
-            description = "English Streaming Providers",
-            pluginsCount = 0
+        PluginMetadata(
+            name = "FourKHDHub",
+            internalName = "FourKHDHub",
+            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/builds/FourKHDHub.cs3",
+            repositoryName = "Phisher Providers",
+            language = "en",
+            description = "4K and Ultra-HD movies"
         )
     )
 
@@ -270,53 +266,41 @@ object CloudStreamRepoManager {
                     mapper.typeFactory.constructCollectionType(List::class.java, PluginMetadata::class.java)
                 ) as List<PluginMetadata>
                 cachedPlugins.clear()
-                cachedPlugins.addAll(list)
-                logger.info("Loaded ${cachedPlugins.size} plugins from local cache.")
+                // Purge dead repositories and obsolete 404 URLs from cached entries
+                val cleanedList = list.map { p ->
+                    if (p.name.equals("StreamPlay", ignoreCase = true) && p.url?.contains("Hexated") == true) {
+                        p.copy(
+                            url = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/builds/StreamPlay.cs3",
+                            repositoryName = "Phisher Providers"
+                        )
+                    } else if (p.name.equals("KissKH", ignoreCase = true) && p.url.isNullOrBlank()) {
+                        p.copy(
+                            url = "https://raw.githubusercontent.com/Kraptor123/Cs-Karma/builds/KissKH.cs3",
+                            repositoryName = "Cs-Karma"
+                        )
+                    } else {
+                        p
+                    }
+                }.filter { p ->
+                    val u = p.url ?: ""
+                    !u.contains("Hexated/Cloudstream-Extensions") &&
+                    !u.contains("stormunblessed/stormunblessed-cs3") &&
+                    !u.contains("Abodabodd/re-3arabi/refs/heads/main/builds") &&
+                    !u.contains("Kraptor123/cs-Karma/refs/heads/master")
+                }
+                cachedPlugins.addAll(cleanedList)
+                logger.info("Loaded ${cachedPlugins.size} plugins from local cache after cleanup.")
             } catch (e: Exception) {
                 logger.warn("Could not read local plugins cache: ${e.message}")
             }
         }
 
-        if (cachedPlugins.isEmpty()) {
-            // Seed essential providers so system, offline mode, and unit tests function out-of-the-box
-            val seedPlugins = listOf(
-                PluginMetadata(
-                    name = "KissKH",
-                    internalName = "KissKH",
-                    url = "https://raw.githubusercontent.com/Kraptor123/Cs-Karma/builds/KissKH.cs3",
-                    repositoryName = "Cs-Karma",
-                    language = "en",
-                    description = "Asian dramas, movies, and anime"
-                ),
-                PluginMetadata(
-                    name = "StreamPlay",
-                    internalName = "StreamPlay",
-                    url = "https://raw.githubusercontent.com/Hexated/Cloudstream-Extensions/builds/StreamPlay.cs3",
-                    repositoryName = "Hexated Providers",
-                    language = "en",
-                    description = "Movies and TV series aggregator"
-                ),
-                PluginMetadata(
-                    name = "AvaMovie",
-                    internalName = "AvaMovie",
-                    url = "https://raw.githubusercontent.com/Kraptor123/cs-Karma/refs/heads/master/builds/AvaMovie.cs3",
-                    repositoryName = "Cs-Karma",
-                    language = "fa",
-                    description = "Persian movies and series"
-                ),
-                PluginMetadata(
-                    name = "FaselHD",
-                    internalName = "FaselHD",
-                    url = "https://raw.githubusercontent.com/Abodabodd/re-3arabi/refs/heads/main/builds/FaselHD.cs3",
-                    repositoryName = "Re-3arabi",
-                    language = "ar",
-                    description = "Arabic movies and series"
-                )
-            )
-            cachedPlugins.addAll(seedPlugins)
-            saveCachedPlugins()
-            logger.info("Initialized default seed plugins (${cachedPlugins.size} plugins).")
+        // Ensure all verified seed plugins take precedence at the top of the cache
+        for (seed in seedPlugins) {
+            cachedPlugins.removeAll { it.name.equals(seed.name, ignoreCase = true) }
+            cachedPlugins.add(0, seed)
         }
+        saveCachedPlugins()
     }
 
     private fun saveCachedPlugins() {
@@ -462,12 +446,50 @@ object CloudStreamRepoManager {
     fun getAllPlugins(): List<PluginMetadata> = cachedPlugins
 
     fun getPlugin(name: String): PluginMetadata? {
-        return cachedPlugins.firstOrNull {
-            it.name.equals(name, ignoreCase = true) ||
-            (it.internalName != null && it.internalName.equals(name, ignoreCase = true)) ||
-            it.name.startsWith(name, ignoreCase = true) ||
-            name.startsWith(it.name, ignoreCase = true)
-        }
+        val clean = name.trim()
+        val normalized = clean.replace("[^A-Za-z0-9]".toRegex(), "").lowercase()
+        if (normalized.isBlank()) return null
+
+        // 1. Exact match (case-insensitive)
+        cachedPlugins.firstOrNull {
+            it.name.equals(clean, ignoreCase = true) ||
+            (it.internalName != null && it.internalName.equals(clean, ignoreCase = true))
+        }?.let { return it }
+
+        // 2. Normalized alphanumeric match (handles spaces, e.g. "XD Movies" == "XDMovies")
+        cachedPlugins.firstOrNull {
+            val pNorm = it.name.replace("[^A-Za-z0-9]".toRegex(), "").lowercase()
+            val iNorm = it.internalName?.replace("[^A-Za-z0-9]".toRegex(), "")?.lowercase()
+            pNorm == normalized || iNorm == normalized
+        }?.let { return it }
+
+        // 3. Prefix match
+        cachedPlugins.firstOrNull {
+            val pNorm = it.name.replace("[^A-Za-z0-9]".toRegex(), "").lowercase()
+            pNorm.startsWith(normalized) || normalized.startsWith(pNorm)
+        }?.let { return it }
+
+        // 4. Fallback to locally cached .cs3 or .jar file if present
+        try {
+            val localFiles = CloudStreamPluginLoader.cacheDir.listFiles()
+            val localMatch = localFiles?.firstOrNull { file ->
+                val base = file.nameWithoutExtension.replace("[^A-Za-z0-9]".toRegex(), "").lowercase()
+                (file.extension.equals("cs3", true) || file.extension.equals("jar", true)) &&
+                (base == normalized || base.startsWith(normalized) || normalized.startsWith(base))
+            }
+            if (localMatch != null) {
+                val baseName = localMatch.nameWithoutExtension
+                return PluginMetadata(
+                    name = baseName,
+                    internalName = baseName,
+                    url = null,
+                    repositoryName = "Local Cache",
+                    language = "en"
+                )
+            }
+        } catch (_: Throwable) {}
+
+        return null
     }
 
     /**

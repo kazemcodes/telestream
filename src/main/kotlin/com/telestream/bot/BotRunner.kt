@@ -1026,7 +1026,7 @@ class BotRunner(private val bot: TelegramClient) {
 
         if (results.isEmpty()) {
             val err = ProviderManager.getLastError(sourceName)
-            val msgText = if (err != null && err.isNetworkOrBlocked) {
+            val msgText = if (err != null) {
                 t("search_error_source", lang, sourceName, err.message)
             } else {
                 t("no_results_in_source", lang, sourceName, query)
@@ -1196,7 +1196,7 @@ class BotRunner(private val bot: TelegramClient) {
                 )
             )
         } else if (safePage == 0) {
-            val quickPicks = listOf("KissKH", "AvaMovie", "FaselHD", "XD Movies")
+            val quickPicks = listOf("KissKH", "StreamPlay", "SuperStream", "XDMovies", "HiAnime")
             val pickButtons = quickPicks.map { pickName ->
                 val isActive = pickName.equals(activeSource, ignoreCase = true)
                 val token = CallbackTokenCache.put(SourceActionRef(filterLang, safePage, pickName, query))
@@ -1318,7 +1318,7 @@ class BotRunner(private val bot: TelegramClient) {
 
         if (items.isEmpty()) {
             val err = ProviderManager.getLastError(activeSource)
-            val emptyText = if (err != null && err.isNetworkOrBlocked) {
+            val emptyText = if (err != null) {
                 t("source_unreachable", lang, activeSource, err.message)
             } else {
                 "$headerText\n\n${t("feed_no_items", lang)}"

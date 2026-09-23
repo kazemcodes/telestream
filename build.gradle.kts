@@ -64,12 +64,12 @@ dependencies {
 
 application {
     mainClass.set("com.telestream.MainKt")
-    applicationDefaultJvmArgs = listOf("-noverify", "-Xverify:none")
+    applicationDefaultJvmArgs = listOf("-Xmx2g", "-Xms512m", "-noverify", "-Xverify:none")
 }
 
 tasks.test {
     useJUnitPlatform()
-    jvmArgs("-noverify", "-Xverify:none")
+    jvmArgs("-Xmx2g", "-Xms512m", "-noverify", "-Xverify:none")
 }
 
 // Fat JAR task for 1-click self-contained deployment

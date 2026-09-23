@@ -33,6 +33,7 @@ sealed class ProviderError(val message: String, val isNetworkOrBlocked: Boolean)
 }
 
 object ProviderManager {
+    private val logger = org.slf4j.LoggerFactory.getLogger(ProviderManager::class.java)
     private val customProviders = java.util.concurrent.CopyOnWriteArrayList<MainAPI>()
 
     val providers: List<MainAPI>
@@ -103,9 +104,11 @@ object ProviderManager {
 
     fun getProvider(name: String): MainAPI? {
         val cleanName = name.replace(" ", "")
+        val norm = name.replace("[^A-Za-z0-9]".toRegex(), "").lowercase()
         var p = providers.firstOrNull { 
             it.name.equals(name, ignoreCase = true) ||
             it.name.replace(" ", "").equals(cleanName, ignoreCase = true) ||
+            it.name.replace("[^A-Za-z0-9]".toRegex(), "").lowercase() == norm ||
             it.name.startsWith(name, ignoreCase = true) ||
             name.startsWith(it.name, ignoreCase = true)
         }
@@ -117,13 +120,17 @@ object ProviderManager {
                     p = providers.firstOrNull {
                         it.name.equals(name, ignoreCase = true) ||
                         it.name.replace(" ", "").equals(cleanName, ignoreCase = true) ||
+                        it.name.replace("[^A-Za-z0-9]".toRegex(), "").lowercase() == norm ||
                         it.name.startsWith(name, ignoreCase = true) ||
                         name.startsWith(it.name, ignoreCase = true)
                     } ?: p
                 }
             }
         }
-        if (p == null) return null
+        if (p == null) {
+            logger.warn("Could not find or load provider for '$name'")
+            return null
+        }
         if (p.isNsfw && !Database.isNsfwEnabled()) return null
         return p
     }
@@ -152,7 +159,13 @@ object ProviderManager {
         val trimmedQuery = query.trim()
         if (trimmedQuery.isBlank()) return emptyList()
 
-        val provider = getProvider(providerName) ?: return emptyList()
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            logger.warn("searchInProvider: Provider '$providerName' could not be resolved.")
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return emptyList()
+        }
+
         val nsfwAllowed = Database.isNsfwEnabled()
         val cacheKey = "${provider.name.lowercase()}:${trimmedQuery.lowercase()}:nsfw=$nsfwAllowed"
         searchCache[cacheKey]?.let { return it }
@@ -171,8 +184,7 @@ object ProviderManager {
         } catch (e: Throwable) {
             val err = classifyError(e)
             lastErrors[provider.name.lowercase()] = err
-            org.slf4j.LoggerFactory.getLogger("ProviderManager")
-                .warn("Search in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
+            logger.warn("Search in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             emptyList()
         }
 
@@ -181,7 +193,13 @@ object ProviderManager {
     }
 
     suspend fun getPopular(providerName: String, page: Int = 1): List<SearchResponse> {
-        val provider = getProvider(providerName) ?: return emptyList()
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            logger.warn("getPopular: Provider '$providerName' could not be resolved.")
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return emptyList()
+        }
+
         val nsfwAllowed = Database.isNsfwEnabled()
         val cacheKey = "${provider.name.lowercase()}:page=$page:nsfw=$nsfwAllowed"
         popularCache[cacheKey]?.let { return it }
@@ -205,8 +223,7 @@ object ProviderManager {
         } catch (e: Throwable) {
             val err = classifyError(e)
             lastErrors[provider.name.lowercase()] = err
-            org.slf4j.LoggerFactory.getLogger("ProviderManager")
-                .warn("getPopular in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
+            logger.warn("getPopular in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             emptyList()
         }
         if (results.isNotEmpty()) {
@@ -216,7 +233,13 @@ object ProviderManager {
     }
 
     suspend fun getLatest(providerName: String, page: Int = 1): List<SearchResponse> {
-        val provider = getProvider(providerName) ?: return emptyList()
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            logger.warn("getLatest: Provider '$providerName' could not be resolved.")
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return emptyList()
+        }
+
         val nsfwAllowed = Database.isNsfwEnabled()
         val cacheKey = "${provider.name.lowercase()}:page=$page:nsfw=$nsfwAllowed"
         latestCache[cacheKey]?.let { return it }
@@ -240,8 +263,7 @@ object ProviderManager {
         } catch (e: Throwable) {
             val err = classifyError(e)
             lastErrors[provider.name.lowercase()] = err
-            org.slf4j.LoggerFactory.getLogger("ProviderManager")
-                .warn("getLatest in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
+            logger.warn("getLatest in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             emptyList()
         }
         if (results.isNotEmpty()) {
@@ -251,12 +273,22 @@ object ProviderManager {
     }
 
     fun getMainPageSections(providerName: String): List<MainPageData> {
-        val provider = getProvider(providerName) ?: return emptyList()
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            logger.warn("getMainPageSections: Provider '$providerName' could not be resolved.")
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return emptyList()
+        }
         return provider.mainPage.filter { it.name.isNotBlank() }
     }
 
     suspend fun getSectionItems(providerName: String, sectionName: String, page: Int = 1): List<SearchResponse> {
-        val provider = getProvider(providerName) ?: return emptyList()
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            logger.warn("getSectionItems: Provider '$providerName' could not be resolved.")
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return emptyList()
+        }
         val nsfwAllowed = Database.isNsfwEnabled()
         val section = provider.mainPage.firstOrNull { it.name.equals(sectionName, ignoreCase = true) }
             ?: provider.mainPage.firstOrNull() ?: return emptyList()
@@ -290,7 +322,12 @@ object ProviderManager {
     }
 
     suspend fun load(providerName: String, url: String): LoadResponse? {
-        val provider = getProvider(providerName) ?: return null
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            logger.warn("load: Provider '$providerName' could not be resolved.")
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return null
+        }
         val cacheKey = "$providerName:$url"
         loadCache[cacheKey]?.let { return it }
 
@@ -300,8 +337,7 @@ object ProviderManager {
         } catch (e: Throwable) {
             val err = classifyError(e)
             lastErrors[provider.name.lowercase()] = err
-            org.slf4j.LoggerFactory.getLogger("ProviderManager")
-                .warn("load in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
+            logger.warn("load in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             null
         }
 
@@ -312,7 +348,12 @@ object ProviderManager {
     }
 
     suspend fun loadLinks(providerName: String, data: String): List<ExtractorLink> {
-        val provider = getProvider(providerName) ?: return emptyList()
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            logger.warn("loadLinks: Provider '$providerName' could not be resolved.")
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return emptyList()
+        }
         val links = mutableListOf<ExtractorLink>()
         clearLastError(provider.name)
         try {
@@ -322,14 +363,17 @@ object ProviderManager {
         } catch (e: Throwable) {
             val err = classifyError(e)
             lastErrors[provider.name.lowercase()] = err
-            org.slf4j.LoggerFactory.getLogger("ProviderManager")
-                .warn("loadLinks in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
+            logger.warn("loadLinks in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
         }
         return links
     }
 
     suspend fun pingProvider(providerName: String): Pair<Boolean, Long> {
-        val provider = getProvider(providerName) ?: return Pair(false, -1)
+        val provider = getProvider(providerName)
+        if (provider == null) {
+            lastErrors[providerName.lowercase()] = ProviderError.GeneralError("سورس '$providerName' بارگذاری نشد یا در دسترس نیست")
+            return Pair(false, -1)
+        }
         val startTime = System.currentTimeMillis()
         return try {
             val resp = app.get(provider.mainUrl, timeout = 6L)

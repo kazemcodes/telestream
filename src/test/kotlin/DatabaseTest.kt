@@ -58,18 +58,18 @@ class DatabaseTest {
 
     @Test
     fun testEnsureUserSmartDefaults() {
-        val enUser = 111222333L
+        val enUser = 111222333000L + (System.nanoTime() % 1000000L)
         Database.ensureUser(enUser, "en")
         assertEquals("en", Database.getUserLanguage(enUser))
         assertEquals("KissKH", Database.getUserSource(enUser))
         assertTrue(Database.isSourceEnabled(enUser, "KissKH"))
 
-        val faUser = 444555666L
+        val faUser = 444555666000L + (System.nanoTime() % 1000000L)
         Database.ensureUser(faUser, "fa")
         assertEquals("fa", Database.getUserLanguage(faUser))
-        assertEquals("AvaMovie", Database.getUserSource(faUser))
-        assertTrue(Database.isSourceEnabled(faUser, "AvaMovie"))
+        assertEquals("KissKH", Database.getUserSource(faUser))
         assertTrue(Database.isSourceEnabled(faUser, "KissKH"))
+        assertTrue(Database.isSourceEnabled(faUser, "StreamPlay"))
     }
 
     @Test

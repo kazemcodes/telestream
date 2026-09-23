@@ -12,9 +12,9 @@ class RepoManagerTest {
     fun testDefaultReposList() {
         val repos = CloudStreamRepoManager.DEFAULT_REPOS
         assertTrue(repos.isNotEmpty())
-        assertTrue(repos.any { it.id == "cs-karma" })
-        assertTrue(repos.any { it.id == "re-3arabi" })
-        assertTrue(repos.any { it.id == "hexated" })
+        assertTrue(repos.any { it.id == "cspr" })
+        assertTrue(repos.any { it.id == "phisherrepo" })
+        assertTrue(repos.any { it.id == "csx" })
     }
 
     @Test
@@ -29,18 +29,15 @@ class RepoManagerTest {
         val allSources = CloudStreamRepoManager.getAllAggregatedSources()
         assertTrue(allSources.isNotEmpty())
         assertTrue(allSources.any { it.name == "KissKH" })
-        assertTrue(allSources.any { it.name == "AvaMovie" })
-        assertTrue(allSources.any { it.name == "FaselHD" })
+        assertTrue(allSources.any { it.name == "StreamPlay" })
+        assertTrue(allSources.any { it.name == "SuperStream" })
 
         val enSources = CloudStreamRepoManager.getAggregatedSources("en")
         assertTrue(enSources.any { it.name == "KissKH" })
-
-        val faSources = CloudStreamRepoManager.getAggregatedSources("fa")
-        assertTrue(faSources.any { it.name == "AvaMovie" })
+        assertTrue(enSources.any { it.name == "StreamPlay" })
 
         val langs = CloudStreamRepoManager.getAllSourceLanguages()
         assertTrue(langs.contains("all"))
         assertTrue(langs.contains("en"))
-        assertTrue(langs.contains("fa"))
     }
 }

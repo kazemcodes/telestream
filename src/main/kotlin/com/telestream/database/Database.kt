@@ -51,6 +51,9 @@ object Database {
                 try {
                     stmt.execute("ALTER TABLE users ADD COLUMN active_source TEXT DEFAULT 'KissKH';")
                 } catch (ignored: Exception) {}
+                try {
+                    stmt.execute("UPDATE users SET active_source = 'KissKH' WHERE active_source = 'AvaMovie';")
+                } catch (ignored: Exception) {}
                 stmt.execute(
                     """
                     CREATE TABLE IF NOT EXISTS bookmarks (
@@ -111,7 +114,7 @@ object Database {
                 checkStmt.setLong(1, userId)
                 val rs = checkStmt.executeQuery()
                 if (!rs.next()) {
-                    val activeSrc = if (defaultLang == "fa") "AvaMovie" else "KissKH"
+                    val activeSrc = "KissKH"
                     val insertSql = "INSERT INTO users (user_id, language, active_source) VALUES (?, ?, ?)"
                     conn.prepareStatement(insertSql).use { insStmt ->
                         insStmt.setLong(1, userId)
@@ -124,11 +127,9 @@ object Database {
                         sStmt.setLong(1, userId)
                         sStmt.setString(2, "KissKH")
                         sStmt.executeUpdate()
-                        if (defaultLang == "fa") {
-                            sStmt.setLong(1, userId)
-                            sStmt.setString(2, "AvaMovie")
-                            sStmt.executeUpdate()
-                        }
+                        sStmt.setLong(1, userId)
+                        sStmt.setString(2, "StreamPlay")
+                        sStmt.executeUpdate()
                     }
                 }
             }
@@ -160,14 +161,6 @@ object Database {
                 stmt.setString(2, language)
                 stmt.executeUpdate()
             }
-            if (language == "fa") {
-                // For Persian users, ensure AvaMovie is enabled by default
-                val sourceSql = "INSERT OR IGNORE INTO user_sources (user_id, source_name, is_enabled) VALUES (?, 'AvaMovie', 1)"
-                conn.prepareStatement(sourceSql).use { sStmt ->
-                    sStmt.setLong(1, userId)
-                    sStmt.executeUpdate()
-                }
-            }
         }
     }
 
@@ -184,8 +177,9 @@ object Database {
             }
         }
         // Defaults if not explicitly recorded yet
-        if (sourceName.equals("KissKH", ignoreCase = true)) return true
-        if (sourceName.equals("AvaMovie", ignoreCase = true) && getUserLanguage(userId) == "fa") return true
+        if (sourceName.equals("KissKH", ignoreCase = true) ||
+            sourceName.equals("StreamPlay", ignoreCase = true) ||
+            sourceName.equals("SuperStream", ignoreCase = true)) return true
         return false
     }
 
@@ -229,10 +223,8 @@ object Database {
             }
         }
         if (enabledSet.isEmpty()) {
-            val defaultSrc = if (getUserLanguage(userId) == "fa") "AvaMovie" else "KissKH"
-            if (isSourceEnabled(userId, defaultSrc)) {
-                enabledSet.add(defaultSrc)
-            }
+            enabledSet.add("KissKH")
+            enabledSet.add("StreamPlay")
         }
         return enabledSet.toList()
     }
@@ -279,7 +271,7 @@ object Database {
             }
         }
         val enabled = getEnabledSources(userId)
-        val defaultSrc = if (getUserLanguage(userId) == "fa" && enabled.any { it.equals("AvaMovie", true) }) "AvaMovie" else "KissKH"
+        val defaultSrc = "KissKH"
         return enabled.firstOrNull { it.equals(defaultSrc, true) } ?: enabled.firstOrNull() ?: "KissKH"
     }
 
