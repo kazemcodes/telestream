@@ -652,6 +652,32 @@ object WebAppHtml {
       border-radius: 6px;
     }
 
+    .tag-trying {
+      background: rgba(99, 102, 241, 0.25);
+      border-color: var(--accent);
+      color: #c7d2fe;
+      animation: tagPulse 1.4s ease-in-out infinite alternate;
+      font-weight: 700;
+    }
+
+    @keyframes tagPulse {
+      0% { opacity: 0.6; transform: scale(0.97); }
+      100% { opacity: 1; transform: scale(1.02); }
+    }
+
+    .loading-state-tag {
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px dashed rgba(99, 102, 241, 0.4);
+      color: #c7d2fe;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      animation: tagPulse 1.4s ease-in-out infinite alternate;
+    }
+
     .detail-plot {
       font-size: 0.85rem;
       line-height: 1.5;
@@ -1008,6 +1034,9 @@ object WebAppHtml {
     let configData = {};
     let searchDebounceTimer = null;
     let allSources = [];
+    let isDetailLoading = false;
+    let isExtractingLinks = false;
+    let isSearchLoading = false;
 
     // Translations Dictionary
     const i18n = {
@@ -1031,6 +1060,9 @@ object WebAppHtml {
         noBookmarks: "No saved titles in your list yet.",
         noHistory: "You haven't watched any movies or series yet.",
         extracting: "Resolving stream links...",
+        loadingDetails: "⏳ Trying to fetch details...",
+        loadingLinks: "⏳ Trying to extract streaming links...",
+        requestInProgress: "⏳ A request is already loading, please wait...",
         selectProvider: "Select Provider / Source",
         seeAll: "See All"
       },
@@ -1054,6 +1086,9 @@ object WebAppHtml {
         noBookmarks: "هنوز فیلمی ذخیره نکرده‌اید.",
         noHistory: "هنوز اثری را تماشا نکرده‌اید.",
         extracting: "در حال دریافت لینک‌های پخش...",
+        loadingDetails: "⏳ در حال دریافت مشخصات...",
+        loadingLinks: "⏳ در حال استخراج لینک‌های پخش...",
+        requestInProgress: "⏳ لطفاً صبر کنید، درخواست قبلی در حال بارگذاری است...",
         selectProvider: "انتخاب منبع فیلم و سریال",
         seeAll: "مشاهده همه"
       }
@@ -1304,23 +1339,29 @@ object WebAppHtml {
 
     // Media Search & Render
     async function searchMedia(query) {
+      if (isSearchLoading) {
+        showToast(i18n[currentLang].requestInProgress);
+        return;
+      }
+      isSearchLoading = true;
       document.getElementById('homeView').style.display = 'none';
       document.getElementById('categoriesView').style.display = 'none';
       document.getElementById('historyView').style.display = 'none';
       document.getElementById('bookmarksView').style.display = 'none';
       const gridView = document.getElementById('gridView');
       gridView.style.display = 'block';
-      document.getElementById('gridTitle').textContent = 'Search: ' + query;
+      document.getElementById('gridTitle').textContent = (currentLang === 'fa' ? 'جستجو: ' : 'Search: ') + query;
 
       const grid = document.getElementById('mediaGrid');
       const spinner = document.getElementById('loadingSpinner');
       spinner.style.display = 'block';
-      grid.innerHTML = '';
+      grid.innerHTML = '<div class="loading-state-tag">' + (currentLang === 'fa' ? '⏳ در حال جستجو در سورس...' : '⏳ Trying to search in source...') + '</div>';
 
       try {
         const res = await fetch('/api/search?provider=' + encodeURIComponent(currentProvider) + '&q=' + encodeURIComponent(query));
         const items = await res.json();
         spinner.style.display = 'none';
+        grid.innerHTML = '';
 
         if (!items || items.length === 0) {
           grid.innerHTML = '<div class="empty-state"><span>🎬</span><span>' + i18n[currentLang].noResults + '</span></div>';
@@ -1331,6 +1372,8 @@ object WebAppHtml {
       } catch (e) {
         spinner.style.display = 'none';
         grid.innerHTML = '<div class="empty-state">❌ Search failed. Check connection or try another source.</div>';
+      } finally {
+        isSearchLoading = false;
       }
     }
 
@@ -1371,6 +1414,11 @@ object WebAppHtml {
 
     // Media Details & In-App Player
     async function openDetails(item) {
+      if (isDetailLoading) {
+        showToast(i18n[currentLang].requestInProgress);
+        return;
+      }
+      isDetailLoading = true;
       activeMedia = item;
       const modal = document.getElementById('detailModal');
       const poster = document.getElementById('detailPoster');
@@ -1393,8 +1441,11 @@ object WebAppHtml {
 
       poster.src = item.posterUrl || '';
       title.textContent = item.name;
-      tags.innerHTML = '<span class="tag">' + (item.apiName || currentProvider) + '</span><span class="tag">' + (item.type || 'HD') + '</span>' + (item.year ? '<span class="tag">' + item.year + '</span>' : '');
-      plot.textContent = "Loading synopsis...";
+      tags.innerHTML = '<span class="tag">' + (item.apiName || currentProvider) + '</span>' +
+        '<span class="tag">' + (item.type || 'HD') + '</span>' +
+        (item.year ? '<span class="tag">' + item.year + '</span>' : '') +
+        '<span class="tag tag-trying" id="tryingTag">' + i18n[currentLang].loadingDetails + '</span>';
+      plot.textContent = i18n[currentLang].loadingDetails;
 
       updateBookmarkButtonState(item);
       modal.classList.add('open');
@@ -1406,12 +1457,19 @@ object WebAppHtml {
         plot.textContent = details.plot || "No synopsis available.";
         activeMedia.details = details;
 
+        const tryingTag = document.getElementById('tryingTag');
+        if (tryingTag) tryingTag.remove();
+
         if (details.episodes && details.episodes.length > 0) {
           renderEpisodes(details.episodes);
           epSec.style.display = 'block';
         }
       } catch (e) {
         plot.textContent = "Unable to load complete details.";
+        const tryingTag = document.getElementById('tryingTag');
+        if (tryingTag) tryingTag.remove();
+      } finally {
+        isDetailLoading = false;
       }
     }
 
@@ -1435,10 +1493,16 @@ object WebAppHtml {
     }
 
     async function fetchAndPlayStreams(provider, dataUrl, epTitle = null) {
-      showToast(i18n[currentLang].extracting);
+      if (isExtractingLinks) {
+        showToast(i18n[currentLang].requestInProgress);
+        return;
+      }
+      isExtractingLinks = true;
+      showToast(i18n[currentLang].loadingLinks);
       const streamSec = document.getElementById('streamsSection');
       const list = document.getElementById('linksList');
-      list.innerHTML = '';
+      list.innerHTML = '<div class="loading-state-tag">' + i18n[currentLang].loadingLinks + '</div>';
+      streamSec.style.display = 'block';
 
       try {
         const res = await fetch('/api/links?provider=' + encodeURIComponent(provider) + '&data=' + encodeURIComponent(dataUrl));
@@ -1450,6 +1514,7 @@ object WebAppHtml {
           return;
         }
 
+        list.innerHTML = '';
         streamSec.style.display = 'block';
         links.forEach((link, idx) => {
           const item = document.createElement('div');
@@ -1473,6 +1538,9 @@ object WebAppHtml {
         recordHistory(activeMedia, links[0].url, epTitle);
       } catch (e) {
         showToast("Failed to resolve links");
+        list.innerHTML = '<div class="empty-state">❌ Failed to resolve streaming links.</div>';
+      } finally {
+        isExtractingLinks = false;
       }
     }
 

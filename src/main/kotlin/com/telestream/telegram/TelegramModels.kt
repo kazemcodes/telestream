@@ -48,7 +48,8 @@ data class Message(
     @SerialName("message_id") val messageId: Long,
     val from: User? = null,
     val chat: Chat,
-    val text: String? = null
+    val text: String? = null,
+    @SerialName("reply_markup") val replyMarkup: InlineKeyboardMarkup? = null
 )
 
 @Serializable

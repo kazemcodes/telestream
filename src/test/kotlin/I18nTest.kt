@@ -34,7 +34,7 @@ class I18nTest {
     fun testBotRunnerAllKeysPresent() {
         val botFile = java.io.File("src/main/kotlin/com/telestream/bot/BotRunner.kt")
         val content = botFile.readText()
-        val regex = Regex("""t\(\s*"([a-z0-9_]+)"""")
+        val regex = Regex("""(?<![a-zA-Z0-9_])t\(\s*"([a-z0-9_]+)"""")
         val keysUsed = (regex.findAll(content).map { it.groupValues[1] } + listOf("feed_latest_title", "feed_popular_title", "btn_switch_source")).distinct().toList()
 
         val missingInEn = mutableListOf<String>()

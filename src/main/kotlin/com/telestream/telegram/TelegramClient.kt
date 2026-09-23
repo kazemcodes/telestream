@@ -257,6 +257,50 @@ class TelegramClient(private val botToken: String) {
         }
     }
 
+    suspend fun editMessageReplyMarkup(
+        chatId: Long,
+        messageId: Long,
+        replyMarkup: InlineKeyboardMarkup? = null
+    ): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("chat_id", chatId)
+                put("message_id", messageId)
+                if (replyMarkup != null) {
+                    put("reply_markup", json.encodeToJsonElement(replyMarkup))
+                }
+            }
+            val res = client.post("$baseUrl/editMessageReplyMarkup") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            logger.error("Error editing reply markup $messageId: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun sendChatAction(
+        chatId: Long,
+        action: String = "typing"
+    ): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("chat_id", chatId)
+                put("action", action)
+            }
+            val res = client.post("$baseUrl/sendChatAction") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            logger.debug("Failed sending chat action $action to $chatId: ${e.message}")
+            false
+        }
+    }
+
     suspend fun answerCallbackQuery(
         callbackQueryId: String,
         text: String? = null,

@@ -25,6 +25,10 @@ class WebAppTest {
         assertTrue(html.contains("videoPlayer"))
         assertTrue(html.contains("searchMedia"))
         assertTrue(html.contains("i18n"))
+        assertTrue(html.contains("tag-trying"))
+        assertTrue(html.contains("loading-state-tag"))
+        assertTrue(html.contains("isDetailLoading"))
+        assertTrue(html.contains("isExtractingLinks"))
     }
 
     @Test

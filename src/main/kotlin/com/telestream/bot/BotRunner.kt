@@ -163,6 +163,9 @@ class BotRunner(private val bot: TelegramClient) {
     // Multi-user debounce cache to prevent rapid double-clicks
     private val userLastAction = ConcurrentHashMap<Long, Long>()
 
+    // In-flight active API request tracker to prevent duplicate requests ("so they won't send it again")
+    private val userActiveApiRequests = ConcurrentHashMap<Long, String>()
+
     // Tracks if user explicitly selected a source for their upcoming text input
     private val userSearchPending = ConcurrentHashMap<Long, String>()
     // Tracks if user is in source keyword filter mode
@@ -176,6 +179,30 @@ class BotRunner(private val bot: TelegramClient) {
         }
         userLastAction[userId] = now
         return false
+    }
+
+    /**
+     * Updates an inline keyboard in-place to display a visual loading tag on the clicked button.
+     */
+    private suspend fun showButtonLoadingTag(
+        chatId: Long,
+        messageId: Long,
+        originalMarkup: InlineKeyboardMarkup?,
+        clickedCallbackData: String,
+        lang: String
+    ) {
+        if (originalMarkup == null) return
+        val tryingText = t("btn_trying", lang)
+        val updatedRows = originalMarkup.inlineKeyboard.map { row ->
+            row.map { btn ->
+                if (btn.callbackData == clickedCallbackData) {
+                    btn.copy(text = tryingText, callbackData = "noop")
+                } else {
+                    btn
+                }
+            }
+        }
+        bot.editMessageReplyMarkup(chatId, messageId, InlineKeyboardMarkup(updatedRows))
     }
 
     fun stop() {
@@ -1104,8 +1131,18 @@ class BotRunner(private val bot: TelegramClient) {
         sourceName: String,
         query: String
     ) {
-        bot.sendMessage(chatId, t("searching_in_source", lang, sourceName, query))
-        val results = ProviderManager.searchInProvider(sourceName, query)
+        if (userActiveApiRequests.putIfAbsent(userId, "search:$query") != null) {
+            bot.sendMessage(chatId, t("request_in_progress", lang))
+            return
+        }
+        bot.sendChatAction(chatId, "typing")
+        val tryingTag = if (lang == "fa") "⏳ [در حال تلاش...]" else "⏳ [Trying...]"
+        bot.sendMessage(chatId, "$tryingTag ${t("searching_in_source", lang, sourceName, query)}")
+        val results = try {
+            ProviderManager.searchInProvider(sourceName, query)
+        } finally {
+            userActiveApiRequests.remove(userId)
+        }
         val queryToken = CallbackTokenCache.put(query)
 
         if (results.isEmpty()) {
@@ -1913,6 +1950,11 @@ class BotRunner(private val bot: TelegramClient) {
             return
         }
 
+        if (userActiveApiRequests.containsKey(userId)) {
+            bot.answerCallbackQuery(callback.id, t("request_in_progress", lang))
+            return
+        }
+
         when {
             data == "noop" -> {
                 bot.answerCallbackQuery(callback.id)
@@ -1972,13 +2014,27 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             data == "feed:popular" -> {
-                showFeedScreen(chatId, userId, lang, "popular", messageId = messageId)
-                bot.answerCallbackQuery(callback.id)
+                bot.answerCallbackQuery(callback.id, t("loading_feed_tag", lang))
+                showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
+                bot.sendChatAction(chatId, "typing")
+                userActiveApiRequests[userId] = "feed:popular"
+                try {
+                    showFeedScreen(chatId, userId, lang, "popular", messageId = messageId)
+                } finally {
+                    userActiveApiRequests.remove(userId)
+                }
             }
 
             data == "feed:latest" -> {
-                showFeedScreen(chatId, userId, lang, "latest", messageId = messageId)
-                bot.answerCallbackQuery(callback.id)
+                bot.answerCallbackQuery(callback.id, t("loading_feed_tag", lang))
+                showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
+                bot.sendChatAction(chatId, "typing")
+                userActiveApiRequests[userId] = "feed:latest"
+                try {
+                    showFeedScreen(chatId, userId, lang, "latest", messageId = messageId)
+                } finally {
+                    userActiveApiRequests.remove(userId)
+                }
             }
 
             data.startsWith("feed_picksrc:") -> {
@@ -1993,8 +2049,15 @@ class BotRunner(private val bot: TelegramClient) {
                 val token = parts.getOrNull(1) ?: ""
                 val sourceName = CallbackTokenCache.get<String>(token) ?: Database.getUserSource(userId)
                 Database.setUserSource(userId, sourceName)
-                showFeedScreen(chatId, userId, lang, feedType, sourceName = sourceName, messageId = messageId)
-                bot.answerCallbackQuery(callback.id)
+                bot.answerCallbackQuery(callback.id, t("loading_feed_tag", lang))
+                showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
+                bot.sendChatAction(chatId, "typing")
+                userActiveApiRequests[userId] = "feed_src"
+                try {
+                    showFeedScreen(chatId, userId, lang, feedType, sourceName = sourceName, messageId = messageId)
+                } finally {
+                    userActiveApiRequests.remove(userId)
+                }
             }
 
             data.startsWith("feed_retry:") -> {
@@ -2003,8 +2066,15 @@ class BotRunner(private val bot: TelegramClient) {
                 val page = parts.getOrNull(1)?.toIntOrNull() ?: 1
                 val token = parts.getOrNull(2) ?: ""
                 val sourceName = CallbackTokenCache.get<String>(token) ?: Database.getUserSource(userId)
-                showFeedScreen(chatId, userId, lang, feedType, page = page, sourceName = sourceName, messageId = messageId)
-                bot.answerCallbackQuery(callback.id, t("btn_retry", lang))
+                bot.answerCallbackQuery(callback.id, t("loading_feed_tag", lang))
+                showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
+                bot.sendChatAction(chatId, "typing")
+                userActiveApiRequests[userId] = "feed_retry"
+                try {
+                    showFeedScreen(chatId, userId, lang, feedType, page = page, sourceName = sourceName, messageId = messageId)
+                } finally {
+                    userActiveApiRequests.remove(userId)
+                }
             }
 
             data.startsWith("src_retry:") -> {
@@ -2012,9 +2082,12 @@ class BotRunner(private val bot: TelegramClient) {
                 val pair = CallbackTokenCache.get<Pair<String, String>>(token)
                 if (pair != null) {
                     val (sourceName, query) = pair
+                    bot.answerCallbackQuery(callback.id, t("searching_tag", lang))
+                    showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
                     executeSearch(chatId, userId, lang, sourceName, query)
+                } else {
+                    bot.answerCallbackQuery(callback.id)
                 }
-                bot.answerCallbackQuery(callback.id)
             }
 
             data == "menu:sources" || data == "menu:manage_sources" || data == "menu:enabled_sources" -> {
@@ -2189,7 +2262,8 @@ class BotRunner(private val bot: TelegramClient) {
                 val token = data.removePrefix("src_exec:")
                 val ref = CallbackTokenCache.get<SearchExecRef>(token)
                 if (ref != null) {
-                    bot.answerCallbackQuery(callback.id)
+                    bot.answerCallbackQuery(callback.id, t("searching_tag", lang))
+                    showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
                     Database.setUserSource(userId, ref.sourceName)
                     executeSearch(chatId, userId, lang, ref.sourceName, ref.query)
                 } else {
@@ -2458,8 +2532,16 @@ class BotRunner(private val bot: TelegramClient) {
                     return
                 }
 
-                bot.answerCallbackQuery(callback.id, t("resolving_links", lang).take(40))
-                val details = ProviderManager.load(ref.provider, ref.url)
+                bot.answerCallbackQuery(callback.id, t("loading_details_tag", lang))
+                showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
+                bot.sendChatAction(chatId, "typing")
+
+                userActiveApiRequests[userId] = "load:$token"
+                val details = try {
+                    ProviderManager.load(ref.provider, ref.url)
+                } finally {
+                    userActiveApiRequests.remove(userId)
+                }
                 if (details == null) {
                     val rawUrl = ref.url.takeIf { it.startsWith("http") }
                     val webUrl = sanitizeTelegramUrl(rawUrl)
@@ -2569,7 +2651,16 @@ class BotRunner(private val bot: TelegramClient) {
                     return
                 }
 
-                val details = ProviderManager.load(ref.provider, ref.url)
+                bot.answerCallbackQuery(callback.id, t("loading_episodes_tag", lang))
+                showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
+                bot.sendChatAction(chatId, "typing")
+
+                userActiveApiRequests[userId] = "eps:$token"
+                val details = try {
+                    ProviderManager.load(ref.provider, ref.url)
+                } finally {
+                    userActiveApiRequests.remove(userId)
+                }
                 if (details == null) {
                     val rawUrl = ref.url.takeIf { it.startsWith("http") }
                     val webUrl = sanitizeTelegramUrl(rawUrl)
@@ -2668,8 +2759,16 @@ class BotRunner(private val bot: TelegramClient) {
                     return
                 }
 
-                bot.answerCallbackQuery(callback.id, t("resolving_links", lang).take(40))
-                val links = ProviderManager.loadLinks(epRef.provider, epRef.episodeData)
+                bot.answerCallbackQuery(callback.id, t("resolving_links_tag", lang))
+                showButtonLoadingTag(chatId, messageId, callback.message?.replyMarkup, data, lang)
+                bot.sendChatAction(chatId, "typing")
+
+                userActiveApiRequests[userId] = "links:$epToken"
+                val links = try {
+                    ProviderManager.loadLinks(epRef.provider, epRef.episodeData)
+                } finally {
+                    userActiveApiRequests.remove(userId)
+                }
 
                 if (links.isEmpty()) {
                     val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
