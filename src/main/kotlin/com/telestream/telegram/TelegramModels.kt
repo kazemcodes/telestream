@@ -120,3 +120,12 @@ data class SetMyCommandsRequest(
     @SerialName("language_code") val languageCode: String? = null
 )
 
+@Serializable
+data class InputMediaPhoto(
+    val type: String = "photo",
+    val media: String,
+    val caption: String? = null,
+    @SerialName("parse_mode") val parseMode: String = "Markdown"
+)
+
+

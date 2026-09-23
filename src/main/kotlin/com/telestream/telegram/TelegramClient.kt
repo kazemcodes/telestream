@@ -11,10 +11,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.encodeToJsonElement
-import kotlinx.serialization.json.put
+import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 
 class TelegramClient(private val botToken: String) {
@@ -111,7 +108,7 @@ class TelegramClient(private val botToken: String) {
         caption: String? = null,
         replyMarkup: InlineKeyboardMarkup? = null,
         parseMode: String = "Markdown"
-    ): Boolean {
+    ): Long? {
         return try {
             val payload = buildJsonObject {
                 put("chat_id", chatId)
@@ -128,12 +125,75 @@ class TelegramClient(private val botToken: String) {
                 contentType(ContentType.Application.Json)
                 setBody(payload.toString())
             }
-            res.status.isSuccess()
+            if (res.status.isSuccess()) {
+                val elem = json.parseToJsonElement(res.bodyAsText())
+                elem.jsonObject["result"]?.jsonObject?.get("message_id")?.jsonPrimitive?.longOrNull ?: 1L
+            } else {
+                logger.debug("Failed sending photo: HTTP ${res.status.value}")
+                null
+            }
         } catch (e: Exception) {
             logger.debug("Failed sending photo: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun editMessageMedia(
+        chatId: Long,
+        messageId: Long,
+        photoUrl: String,
+        caption: String? = null,
+        replyMarkup: InlineKeyboardMarkup? = null,
+        parseMode: String = "Markdown"
+    ): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("chat_id", chatId)
+                put("message_id", messageId)
+                put("media", buildJsonObject {
+                    put("type", "photo")
+                    put("media", photoUrl)
+                    if (caption != null) {
+                        put("caption", caption)
+                        put("parse_mode", parseMode)
+                    }
+                })
+                if (replyMarkup != null) {
+                    put("reply_markup", json.encodeToJsonElement(replyMarkup))
+                }
+            }
+            val res = client.post("$baseUrl/editMessageMedia") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            logger.error("Error editing media $messageId: ${e.message}")
             false
         }
     }
+
+    suspend fun sendMediaGroup(
+        chatId: Long,
+        mediaList: List<InputMediaPhoto>
+    ): Boolean {
+        if (mediaList.isEmpty()) return false
+        return try {
+            val payload = buildJsonObject {
+                put("chat_id", chatId)
+                put("media", json.encodeToJsonElement(mediaList))
+            }
+            val res = client.post("$baseUrl/sendMediaGroup") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            logger.error("Error sending media group: ${e.message}")
+            false
+        }
+    }
+
 
     suspend fun editMessageText(
         chatId: Long,

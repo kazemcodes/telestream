@@ -72,6 +72,24 @@ data class SourceActionRef(
     val sourceName: String,
     val query: String? = null
 )
+data class MediaItemSummary(
+    val name: String,
+    val url: String,
+    val apiName: String,
+    val posterUrl: String?,
+    val type: TvType?,
+    val year: Int?
+)
+data class MediaCarouselRef(
+    val contextType: String,
+    val sourceName: String,
+    val query: String? = null,
+    val feedType: String? = null,
+    val page: Int = 0,
+    val items: List<MediaItemSummary>,
+    var currentIndex: Int = 0
+)
+
 
 class BotRunner(private val bot: TelegramClient) {
     private val logger = LoggerFactory.getLogger(BotRunner::class.java)
@@ -580,6 +598,58 @@ class BotRunner(private val bot: TelegramClient) {
         }
     }
 
+    private fun buildCarouselKeyboard(
+        carouselToken: String,
+        items: List<MediaItemSummary>,
+        currentIndex: Int,
+        contextType: String,
+        lang: String,
+        extraRows: List<List<InlineKeyboardButton>> = emptyList()
+    ): InlineKeyboardMarkup {
+        val rows = mutableListOf<List<InlineKeyboardButton>>()
+
+        for ((idx, item) in items.withIndex()) {
+            val icon = if (item.type == TvType.Movie) "🎬" else "📺"
+            val isCurrent = idx == currentIndex
+            val marker = if (isCurrent) "🔘 " else "${idx + 1}. "
+            val yearStr = item.year?.let { " ($it)" } ?: ""
+            val token = CallbackTokenCache.put(MediaRef(item.apiName, item.url))
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = "$marker$icon ${item.name}$yearStr",
+                        callbackData = "v:$token"
+                    )
+                )
+            )
+        }
+
+        if (items.size > 1) {
+            val prevIdx = if (currentIndex > 0) currentIndex - 1 else items.size - 1
+            val nextIdx = if (currentIndex < items.size - 1) currentIndex + 1 else 0
+            val flipperRow = mutableListOf<InlineKeyboardButton>()
+            flipperRow.add(InlineKeyboardButton(text = t("btn_prev", lang), callbackData = "car_nav:$carouselToken:$prevIdx"))
+            flipperRow.add(InlineKeyboardButton(text = "🖼 ${currentIndex + 1}/${items.size}", callbackData = "car_nav:$carouselToken:$currentIndex"))
+            flipperRow.add(InlineKeyboardButton(text = t("btn_next", lang), callbackData = "car_nav:$carouselToken:$nextIdx"))
+            rows.add(flipperRow)
+        }
+
+        val validPosters = items.count { !it.posterUrl.isNullOrBlank() && it.posterUrl.startsWith("http") }
+        if (validPosters >= 2) {
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = "${t("btn_view_album", lang)} ($validPosters)",
+                        callbackData = "car_album:$carouselToken"
+                    )
+                )
+            )
+        }
+
+        rows.addAll(extraRows)
+        return InlineKeyboardMarkup(rows)
+    }
+
     private suspend fun executeSearch(
         chatId: Long,
         userId: Long,
@@ -620,37 +690,65 @@ class BotRunner(private val bot: TelegramClient) {
             return
         }
 
-        val buttons = results.take(8).map { item ->
-            val icon = if (item.type == TvType.Movie) "🎬" else "📺"
-            val yearStr = item.year?.let { " ($it)" } ?: ""
-            val token = CallbackTokenCache.put(MediaRef(item.apiName, item.url))
-            listOf(
-                InlineKeyboardButton(
-                    text = "$icon ${item.name}$yearStr",
-                    callbackData = "v:$token"
-                )
+        val summaries = results.take(8).map { item ->
+            MediaItemSummary(
+                name = item.name,
+                url = item.url,
+                apiName = item.apiName,
+                posterUrl = item.posterUrl,
+                type = item.type,
+                year = item.year
             )
-        }.toMutableList()
+        }
 
-        buttons.add(
+        val carouselRef = MediaCarouselRef(
+            contextType = "search",
+            sourceName = sourceName,
+            query = query,
+            items = summaries,
+            currentIndex = 0
+        )
+        val carToken = CallbackTokenCache.put(carouselRef)
+
+        val extraRows = listOf(
             listOf(
                 InlineKeyboardButton(
                     text = t("btn_search_another_source", lang),
                     callbackData = "src_another:$queryToken"
                 )
-            )
-        )
-        buttons.add(
+            ),
             listOf(
                 InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
             )
         )
 
-        bot.sendMessage(
-            chatId,
-            t("search_results", lang, query) + "\n(📡 $sourceName)",
-            replyMarkup = InlineKeyboardMarkup(buttons)
+        val keyboard = buildCarouselKeyboard(
+            carouselToken = carToken,
+            items = summaries,
+            currentIndex = 0,
+            contextType = "search",
+            lang = lang,
+            extraRows = extraRows
         )
+
+        val currentItem = summaries[0]
+        val caption = buildString {
+            append(t("search_results", lang, query))
+            append("\n(📡 $sourceName • ${summaries.size} items)\n\n")
+            append(t("poster_viewing_item", lang, 1, currentItem.name))
+            currentItem.year?.let { append(" ($it)") }
+        }
+
+        val firstPoster = currentItem.posterUrl?.takeIf { it.startsWith("http") }
+            ?: summaries.firstOrNull { it.posterUrl?.startsWith("http") == true }?.posterUrl
+
+        val msgId = if (firstPoster != null) {
+            bot.sendPhoto(chatId, firstPoster, caption = caption, replyMarkup = keyboard)
+        } else null
+
+        if (msgId == null) {
+            bot.sendMessage(chatId, caption, replyMarkup = keyboard)
+        }
     }
 
     private suspend fun showSourcesManager(
@@ -892,22 +990,28 @@ class BotRunner(private val bot: TelegramClient) {
             return
         }
 
-        for (item in items.take(8)) {
-            val icon = if (item.type == TvType.Movie) "🎬" else "📺"
-            val yearStr = item.year?.let { " ($it)" } ?: ""
-            val token = CallbackTokenCache.put(MediaRef(activeSource, item.url))
-            rows.add(
-                listOf(
-                    InlineKeyboardButton(
-                        text = "$icon ${item.name}$yearStr",
-                        callbackData = "v:$token"
-                    )
-                )
+        val summaries = items.take(8).map { item ->
+            MediaItemSummary(
+                name = item.name,
+                url = item.url,
+                apiName = activeSource,
+                posterUrl = item.posterUrl,
+                type = item.type,
+                year = item.year
             )
         }
 
-        // Toggle row: Popular vs Latest
-        rows.add(
+        val carouselRef = MediaCarouselRef(
+            contextType = "feed",
+            sourceName = activeSource,
+            feedType = feedType,
+            page = page,
+            items = summaries,
+            currentIndex = 0
+        )
+        val carToken = CallbackTokenCache.put(carouselRef)
+
+        val extraRows = listOf(
             listOf(
                 InlineKeyboardButton(
                     text = if (isPopular) "🔘 ${t("btn_popular", lang)}" else t("btn_popular", lang),
@@ -917,23 +1021,57 @@ class BotRunner(private val bot: TelegramClient) {
                     text = if (!isPopular) "🔘 ${t("btn_latest", lang)}" else t("btn_latest", lang),
                     callbackData = "feed:latest"
                 )
-            )
-        )
-
-        // Switch source and Back buttons
-        rows.add(
+            ),
             listOf(
                 InlineKeyboardButton(text = "${t("btn_switch_source", lang)} ($activeSource)", callbackData = "feed_picksrc:$feedType"),
                 InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
             )
         )
 
-        val kb = InlineKeyboardMarkup(rows)
+        val keyboard = buildCarouselKeyboard(
+            carouselToken = carToken,
+            items = summaries,
+            currentIndex = 0,
+            contextType = "feed",
+            lang = lang,
+            extraRows = extraRows
+        )
+
+        val currentItem = summaries[0]
+        val caption = buildString {
+            append(headerText)
+            append("\n\n")
+            append(t("poster_viewing_item", lang, 1, currentItem.name))
+            currentItem.year?.let { append(" ($it)") }
+        }
+
+        val firstPoster = currentItem.posterUrl?.takeIf { it.startsWith("http") }
+            ?: summaries.firstOrNull { it.posterUrl?.startsWith("http") == true }?.posterUrl
+
         if (messageId != null) {
-            val ed = bot.editMessageText(chatId, messageId, headerText, replyMarkup = kb)
-            if (!ed) bot.sendMessage(chatId, headerText, replyMarkup = kb)
+            val edited = if (firstPoster != null) {
+                bot.editMessageMedia(chatId, messageId, firstPoster, caption = caption, replyMarkup = keyboard)
+            } else {
+                bot.editMessageCaption(chatId, messageId, caption, replyMarkup = keyboard)
+            }
+            if (!edited) {
+                val edText = bot.editMessageText(chatId, messageId, caption, replyMarkup = keyboard)
+                if (!edText) {
+                    if (firstPoster != null) {
+                        bot.sendPhoto(chatId, firstPoster, caption = caption, replyMarkup = keyboard)
+                    } else {
+                        bot.sendMessage(chatId, caption, replyMarkup = keyboard)
+                    }
+                }
+            }
         } else {
-            bot.sendMessage(chatId, headerText, replyMarkup = kb)
+            val msgId = if (firstPoster != null) {
+                bot.sendPhoto(chatId, firstPoster, caption = caption, replyMarkup = keyboard)
+            } else null
+
+            if (msgId == null) {
+                bot.sendMessage(chatId, caption, replyMarkup = keyboard)
+            }
         }
     }
 
@@ -1298,6 +1436,122 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.answerCallbackQuery(callback.id)
             }
 
+            data.startsWith("car_nav:") -> {
+                // car_nav:{token}:{newIndex}
+                val parts = data.removePrefix("car_nav:").split(":")
+                val token = parts.getOrNull(0) ?: return
+                val newIndex = parts.getOrNull(1)?.toIntOrNull() ?: 0
+
+                val ref = CallbackTokenCache.get<MediaCarouselRef>(token)
+                if (ref == null) {
+                    bot.answerCallbackQuery(callback.id, "Session expired", showAlert = true)
+                    return
+                }
+
+                val safeIndex = newIndex.coerceIn(0, ref.items.size - 1)
+                ref.currentIndex = safeIndex
+                val currentItem = ref.items[safeIndex]
+
+                val isSearch = ref.contextType == "search"
+                val extraRows = if (isSearch) {
+                    val queryToken = CallbackTokenCache.put(ref.query ?: "")
+                    listOf(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = t("btn_search_another_source", lang),
+                                callbackData = "src_another:$queryToken"
+                            )
+                        ),
+                        listOf(
+                            InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                        )
+                    )
+                } else {
+                    val isPopular = ref.feedType == "popular"
+                    listOf(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = if (isPopular) "🔘 ${t("btn_popular", lang)}" else t("btn_popular", lang),
+                                callbackData = "feed:popular"
+                            ),
+                            InlineKeyboardButton(
+                                text = if (!isPopular) "🔘 ${t("btn_latest", lang)}" else t("btn_latest", lang),
+                                callbackData = "feed:latest"
+                            )
+                        ),
+                        listOf(
+                            InlineKeyboardButton(text = "${t("btn_switch_source", lang)} (${ref.sourceName})", callbackData = "feed_picksrc:${ref.feedType ?: "popular"}"),
+                            InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                        )
+                    )
+                }
+
+                val keyboard = buildCarouselKeyboard(
+                    carouselToken = token,
+                    items = ref.items,
+                    currentIndex = safeIndex,
+                    contextType = ref.contextType,
+                    lang = lang,
+                    extraRows = extraRows
+                )
+
+                val caption = if (isSearch) {
+                    buildString {
+                        append(t("search_results", lang, ref.query ?: ""))
+                        append("\n(📡 ${ref.sourceName} • ${ref.items.size} items)\n\n")
+                        append(t("poster_viewing_item", lang, safeIndex + 1, currentItem.name))
+                        currentItem.year?.let { append(" ($it)") }
+                    }
+                } else {
+                    val titleKey = if (ref.feedType == "popular") "feed_popular_title" else "feed_latest_title"
+                    buildString {
+                        append(t(titleKey, lang, ref.sourceName))
+                        append("\n\n")
+                        append(t("poster_viewing_item", lang, safeIndex + 1, currentItem.name))
+                        currentItem.year?.let { append(" ($it)") }
+                    }
+                }
+
+                val targetPoster = currentItem.posterUrl?.takeIf { it.startsWith("http") }
+                val edited = if (targetPoster != null) {
+                    bot.editMessageMedia(chatId, messageId, targetPoster, caption = caption, replyMarkup = keyboard)
+                } else {
+                    bot.editMessageCaption(chatId, messageId, caption = caption, replyMarkup = keyboard)
+                }
+                if (!edited) {
+                    bot.editMessageText(chatId, messageId, caption, replyMarkup = keyboard)
+                }
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data.startsWith("car_album:") -> {
+                // car_album:{token}
+                val token = data.removePrefix("car_album:")
+                val ref = CallbackTokenCache.get<MediaCarouselRef>(token)
+                if (ref == null) {
+                    bot.answerCallbackQuery(callback.id, "Session expired", showAlert = true)
+                    return
+                }
+
+                val validPhotos = ref.items.filter { !it.posterUrl.isNullOrBlank() && it.posterUrl.startsWith("http") }
+                    .take(10)
+                    .mapIndexed { idx, item ->
+                        val yearStr = item.year?.let { " ($it)" } ?: ""
+                        InputMediaPhoto(
+                            media = item.posterUrl!!,
+                            caption = "${idx + 1}. 🎬 ${item.name}$yearStr"
+                        )
+                    }
+
+                if (validPhotos.isEmpty()) {
+                    bot.answerCallbackQuery(callback.id, "No images found", showAlert = true)
+                    return
+                }
+
+                bot.answerCallbackQuery(callback.id)
+                bot.sendMediaGroup(chatId, validPhotos)
+            }
+
             data.startsWith("v:") -> {
                 // v:{token}
                 val token = data.removePrefix("v:")
@@ -1353,6 +1607,19 @@ class BotRunner(private val bot: TelegramClient) {
                     )
                 }
 
+                // Website URL button
+                val pageUrl = details.url.takeIf { it.startsWith("http") } ?: ref.url.takeIf { it.startsWith("http") }
+                if (!pageUrl.isNullOrBlank()) {
+                    buttons.add(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = t("btn_open_website", lang),
+                                url = pageUrl
+                            )
+                        )
+                    )
+                }
+
                 // Bookmark toggle
                 val bmAction = if (isSaved) "unbm" else "bm"
                 val bmText = if (isSaved) t("btn_unbookmark", lang) else t("btn_bookmark", lang)
@@ -1368,7 +1635,7 @@ class BotRunner(private val bot: TelegramClient) {
 
                 val keyboard = InlineKeyboardMarkup(buttons)
                 if (!details.posterUrl.isNullOrBlank() && details.posterUrl!!.startsWith("http")) {
-                    val sent = bot.sendPhoto(chatId, details.posterUrl!!, caption = cardText, replyMarkup = keyboard)
+                    val sent = bot.sendPhoto(chatId, details.posterUrl!!, caption = cardText, replyMarkup = keyboard) != null
                     if (!sent) {
                         bot.sendMessage(chatId, cardText, replyMarkup = keyboard)
                     }
@@ -1472,7 +1739,36 @@ class BotRunner(private val bot: TelegramClient) {
                 val links = ProviderManager.loadLinks(epRef.provider, epRef.episodeData)
 
                 if (links.isEmpty()) {
-                    bot.sendMessage(chatId, t("no_links", lang))
+                    val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
+                    val webUrl = epRef.episodeData.takeIf { it.startsWith("http") }
+                        ?: seriesRef?.url?.takeIf { it.startsWith("http") }
+                    val fallbackButtons = mutableListOf<List<InlineKeyboardButton>>()
+                    if (!webUrl.isNullOrBlank()) {
+                        fallbackButtons.add(
+                            listOf(
+                                InlineKeyboardButton(
+                                    text = t("btn_open_website", lang),
+                                    url = webUrl
+                                )
+                            )
+                        )
+                    }
+                    val backCallback = if (epRef.episodeData == epRef.seriesRefToken) {
+                        "v:${epRef.seriesRefToken}"
+                    } else {
+                        "eps:${epRef.seriesRefToken}:${epRef.page}"
+                    }
+                    fallbackButtons.add(
+                        listOf(
+                            InlineKeyboardButton(text = t("btn_back", lang), callbackData = backCallback),
+                            InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                        )
+                    )
+                    bot.sendMessage(
+                        chatId,
+                        t("no_links_open_web", lang),
+                        replyMarkup = InlineKeyboardMarkup(fallbackButtons)
+                    )
                     return
                 }
 
@@ -1491,6 +1787,21 @@ class BotRunner(private val bot: TelegramClient) {
                             InlineKeyboardButton(
                                 text = label,
                                 url = link.url
+                            )
+                        )
+                    )
+                }
+
+                // Website URL button
+                val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
+                val webUrl = epRef.episodeData.takeIf { it.startsWith("http") }
+                    ?: seriesRef?.url?.takeIf { it.startsWith("http") }
+                if (!webUrl.isNullOrBlank()) {
+                    buttons.add(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = t("btn_open_website", lang),
+                                url = webUrl
                             )
                         )
                     )
