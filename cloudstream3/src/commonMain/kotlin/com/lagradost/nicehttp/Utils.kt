@@ -159,20 +159,15 @@ class ContinuationCallback(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun onResponse(call: Call, response: Response) {
-        continuation.resume(response, null)
+        if (continuation.isActive) {
+            continuation.resume(response, null)
+        } else {
+            response.close()
+        }
     }
 
     override fun onFailure(call: Call, e: IOException) {
-        // Cannot throw exception on SocketException since that can lead to un-catchable crashes
-        // when you exit an activity as a request
-        println("Exception in NiceHttp: ${e.javaClass.name} ${e.message}")
-        if (call.isCanceled()) {
-            // Must be able to throw errors, for example timeouts
-            if (e is InterruptedIOException)
-                continuation.cancel(e)
-            else
-                e.printStackTrace()
-        } else {
+        if (continuation.isActive) {
             continuation.resumeWithException(e)
         }
     }

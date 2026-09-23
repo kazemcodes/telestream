@@ -64,6 +64,9 @@ class CloudStreamClassLoader(
                         if (owner.startsWith("kotlinx/coroutines/BuildersKt") && methodName == "runBlockingK") {
                             fixedName = "runBlocking"
                         }
+                        if (owner == "kotlinx/coroutines/DelayKt" && methodName.startsWith("delay_")) {
+                            fixedName = methodName.replace("delay_", "delay-")
+                        }
                         super.visitMethodInsn(opcode, owner, fixedName, descriptor, isInterface)
                     }
                 }
@@ -85,6 +88,7 @@ object CloudStreamPluginLoader {
 
     // Loaded classloaders cache
     private val classLoaders = ConcurrentHashMap<String, CloudStreamClassLoader>()
+    private val pluginLocks = ConcurrentHashMap<String, Any>()
 
     /**
      * Download (if needed), translate DEX to JAR, load into JVM, and return the registered MainAPI.
@@ -97,17 +101,25 @@ object CloudStreamPluginLoader {
         }
         if (existing != null) return existing
 
-        val cs3File = File(cacheDir, "$safeName.cs3")
-        val jarFile = File(cacheDir, "$safeName.jar")
+        val lock = pluginLocks.computeIfAbsent(safeName) { Any() }
+        synchronized(lock) {
+            val doubleCheck = ProviderManager.providers.firstOrNull {
+                it.name.equals(metadata.name, ignoreCase = true) ||
+                it.name.equals(metadata.internalName, ignoreCase = true)
+            }
+            if (doubleCheck != null) return doubleCheck
 
-        try {
-            // 1. Download .cs3 if not present
-            if (!cs3File.exists() || cs3File.length() == 0L) {
-                val url = metadata.url ?: run {
-                    logger.warn("No download URL for plugin ${metadata.name}")
-                    return null
-                }
-                logger.info("Downloading plugin ${metadata.name} from $url ...")
+            val cs3File = File(cacheDir, "$safeName.cs3")
+            val jarFile = File(cacheDir, "$safeName.jar")
+
+            try {
+                // 1. Download .cs3 if not present
+                if (!cs3File.exists() || cs3File.length() == 0L) {
+                    val url = metadata.url ?: run {
+                        logger.warn("No download URL for plugin ${metadata.name}")
+                        return null
+                    }
+                    logger.info("Downloading plugin ${metadata.name} from $url ...")
                 val request = Request.Builder().url(url).build()
                 httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
@@ -196,4 +208,5 @@ object CloudStreamPluginLoader {
             return null
         }
     }
+}
 }

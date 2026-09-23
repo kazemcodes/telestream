@@ -76,4 +76,35 @@ class CloudStreamPluginLoaderTest {
             println("Successfully loaded XDMovies provider: ${provider.name} (${provider.mainUrl})")
         }
     }
+    @Test
+    fun testStreamPlayAndSuperStreamSearchAndPopular() = kotlinx.coroutines.runBlocking {
+        System.setProperty("kotlinx.coroutines.stacktrace.recovery", "false")
+        com.lagradost.cloudstream3.MainActivity.initNetwork()
+
+        // 1. Verify StreamPlay
+        val spMeta = PluginMetadata(name = "StreamPlay", internalName = "StreamPlay", url = "local", repositoryName = "local")
+        val spProvider = CloudStreamPluginLoader.loadPlugin(spMeta)
+        assertNotNull(spProvider, "StreamPlay should load")
+
+        val spSearch = com.telestream.providers.ProviderManager.searchInProvider("StreamPlay", "batman")
+        assertTrue(spSearch.isNotEmpty(), "StreamPlay search should return results")
+        println("Verified StreamPlay search: found ${spSearch.size} items for 'batman'")
+
+        val spPopular = com.telestream.providers.ProviderManager.getPopular("StreamPlay")
+        assertTrue(spPopular.isNotEmpty(), "StreamPlay getPopular should return results")
+        println("Verified StreamPlay getPopular: found ${spPopular.size} items")
+
+        // 2. Verify SuperStream
+        val ssMeta = PluginMetadata(name = "SuperStream", internalName = "SuperStream", url = "local", repositoryName = "local")
+        val ssProvider = CloudStreamPluginLoader.loadPlugin(ssMeta)
+        assertNotNull(ssProvider, "SuperStream should load")
+
+        val ssSearch = com.telestream.providers.ProviderManager.searchInProvider("SuperStream", "batman")
+        assertTrue(ssSearch.isNotEmpty(), "SuperStream search should return results")
+        println("Verified SuperStream search: found ${ssSearch.size} items for 'batman'")
+
+        val ssPopular = com.telestream.providers.ProviderManager.getPopular("SuperStream")
+        assertTrue(ssPopular.isNotEmpty(), "SuperStream getPopular should return results")
+        println("Verified SuperStream getPopular: found ${ssPopular.size} items")
+    }
 }

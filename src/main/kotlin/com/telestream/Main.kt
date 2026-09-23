@@ -23,15 +23,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 
-fun main(): Unit = runBlocking {
-    val logger = LoggerFactory.getLogger("Main")
+fun main(): Unit {
+    // Disable coroutines stack trace recovery to prevent DebugMetadata version mismatch crashes with dynamic plugins
+    System.setProperty("kotlinx.coroutines.stacktrace.recovery", "false")
 
-    val botToken = Config.botToken
-    val port = Config.port
-    val webAppUrl = Config.webAppUrl
+    runBlocking {
+        val logger = LoggerFactory.getLogger("Main")
 
-    // Initialize networking with DoH (DNS over HTTPS) and optional scraper proxy
-    com.lagradost.cloudstream3.MainActivity.initNetwork(Config.scraperProxy, Config.dnsOverHttps)
+        val botToken = Config.botToken
+        val port = Config.port
+        val webAppUrl = Config.webAppUrl
+
+        // Initialize networking with DoH (DNS over HTTPS) and optional scraper proxy
+        com.lagradost.cloudstream3.MainActivity.initNetwork(Config.scraperProxy, Config.dnsOverHttps)
 
     logger.info("=====================================================")
     logger.info("🎬 Starting TeleStream Telegram Bot (Pure Kotlin JVM)")
@@ -328,4 +332,5 @@ fun main(): Unit = runBlocking {
             runner.startPolling()
         }
     }
+}
 }

@@ -64,12 +64,24 @@ dependencies {
 
 application {
     mainClass.set("com.telestream.MainKt")
-    applicationDefaultJvmArgs = listOf("-Xmx2g", "-Xms512m", "-noverify", "-Xverify:none")
+    applicationDefaultJvmArgs = listOf(
+        "-Xmx2g",
+        "-Xms512m",
+        "-noverify",
+        "-Xverify:none",
+        "-Dkotlinx.coroutines.stacktrace.recovery=false"
+    )
 }
 
 tasks.test {
     useJUnitPlatform()
-    jvmArgs("-Xmx2g", "-Xms512m", "-noverify", "-Xverify:none")
+    jvmArgs(
+        "-Xmx2g",
+        "-Xms512m",
+        "-noverify",
+        "-Xverify:none",
+        "-Dkotlinx.coroutines.stacktrace.recovery=false"
+    )
 }
 
 // Fat JAR task for 1-click self-contained deployment

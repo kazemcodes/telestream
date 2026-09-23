@@ -155,6 +155,34 @@ object ProviderManager {
         return text.any { it in '\u0600'..'\u06FF' || it in '\uFB50'..'\uFDFF' || it in '\uFE70'..'\uFEFF' }
     }
 
+    private suspend fun executeSearch(provider: MainAPI, query: String): List<SearchResponse>? {
+        // 1. Try paginated search first (used by modern multi-provider extensions like StreamPlay, SuperStream)
+        try {
+            val res = provider.search(query, 1)
+            if (res != null && res.items.isNotEmpty()) return res.items
+        } catch (_: NotImplementedError) {
+        } catch (_: UnsupportedOperationException) {
+        }
+
+        // 2. Try classic single-query search (used by providers like KissKH)
+        try {
+            val res = provider.search(query)
+            if (res != null && res.isNotEmpty()) return res
+        } catch (_: NotImplementedError) {
+        } catch (_: UnsupportedOperationException) {
+        }
+
+        // 3. Try quickSearch if available
+        try {
+            val res = provider.quickSearch(query)
+            if (res != null && res.isNotEmpty()) return res
+        } catch (_: NotImplementedError) {
+        } catch (_: UnsupportedOperationException) {
+        }
+
+        return null
+    }
+
     suspend fun searchInProvider(providerName: String, query: String): List<SearchResponse> {
         val trimmedQuery = query.trim()
         if (trimmedQuery.isBlank()) return emptyList()
@@ -172,10 +200,10 @@ object ProviderManager {
 
         clearLastError(provider.name)
         val results = try {
-            var list = (provider.search(trimmedQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
+            var list = (executeSearch(provider, trimmedQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
             if (list.isEmpty() && trimmedQuery.any { it.isUpperCase() }) {
                 val lowerQuery = trimmedQuery.lowercase()
-                val lowerList = (provider.search(lowerQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
+                val lowerList = (executeSearch(provider, lowerQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
                 if (lowerList.isNotEmpty()) {
                     list = lowerList
                 }
