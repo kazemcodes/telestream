@@ -10,7 +10,8 @@ sample/
 *.db-journal
 *.dex
 *.cs3
-
+graphify-out/
+.kotlin/
 # Environment & local credentials
 .env
 .env.local

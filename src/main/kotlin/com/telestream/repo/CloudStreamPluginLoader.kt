@@ -157,10 +157,20 @@ object CloudStreamPluginLoader {
                     zip.close()
 
                     val reader = MultiDexFileReader.open(dexBytes)
-                    val handler = BaksmaliBaseDexExceptionHandler()
+                    val handler = object : BaksmaliBaseDexExceptionHandler() {
+                        override fun handleMethodTranslateException(
+                            method: com.googlecode.d2j.Method?,
+                            node: com.googlecode.d2j.node.DexMethodNode?,
+                            mv: org.objectweb.asm.MethodVisitor?,
+                            e: Exception?
+                        ) {
+                            logger.warn("Method translation issue in ${method?.owner}.${method?.name}: ${e?.javaClass?.simpleName} - ${e?.message}")
+                            super.handleMethodTranslateException(method, node, mv, e)
+                        }
+                    }
                     Dex2jar.from(reader)
                         .withExceptionHandler(handler)
-                        .reUseReg(true)
+                        .reUseReg(false)
                         .topoLogicalSort(false)
                         .skipDebug(true)
                         .optimizeSynchronized(false)
