@@ -12,6 +12,18 @@ data class Bookmark(
     val posterUrl: String
 )
 
+data class WatchHistoryItem(
+    val id: Int,
+    val userId: Long,
+    val provider: String,
+    val mediaUrl: String,
+    val title: String,
+    val posterUrl: String?,
+    val episodeTitle: String?,
+    val episodeData: String?,
+    val updatedAt: String
+)
+
 object Database {
     private val dbDir = File("data").apply { mkdirs() }
     private val dbFile = File(dbDir, "telestream.db")
@@ -69,6 +81,22 @@ object Database {
                         is_enabled INTEGER DEFAULT 1,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         PRIMARY KEY (user_id, source_name)
+                    );
+                    """.trimIndent()
+                )
+                stmt.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS watch_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        provider TEXT NOT NULL,
+                        media_url TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        poster_url TEXT,
+                        episode_title TEXT,
+                        episode_data TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, media_url)
                     );
                     """.trimIndent()
                 )
@@ -388,5 +416,81 @@ object Database {
 
     fun setNsfwEnabled(enabled: Boolean) {
         setSetting("nsfw_enabled", enabled.toString())
+    }
+
+    fun recordWatch(
+        userId: Long,
+        provider: String,
+        mediaUrl: String,
+        title: String,
+        posterUrl: String? = null,
+        episodeTitle: String? = null,
+        episodeData: String? = null
+    ) {
+        DriverManager.getConnection(url).use { conn ->
+            val sql = """
+                INSERT INTO watch_history (user_id, provider, media_url, title, poster_url, episode_title, episode_data, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id, media_url) DO UPDATE SET
+                    provider = excluded.provider,
+                    title = excluded.title,
+                    poster_url = COALESCE(excluded.poster_url, watch_history.poster_url),
+                    episode_title = COALESCE(excluded.episode_title, watch_history.episode_title),
+                    episode_data = COALESCE(excluded.episode_data, watch_history.episode_data),
+                    updated_at = CURRENT_TIMESTAMP;
+            """.trimIndent()
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                stmt.setString(2, provider)
+                stmt.setString(3, mediaUrl)
+                stmt.setString(4, title)
+                stmt.setString(5, posterUrl)
+                stmt.setString(6, episodeTitle)
+                stmt.setString(7, episodeData)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    fun getWatchHistory(userId: Long, limit: Int = 10): List<WatchHistoryItem> {
+        val list = mutableListOf<WatchHistoryItem>()
+        DriverManager.getConnection(url).use { conn ->
+            val sql = "SELECT * FROM watch_history WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?"
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                stmt.setInt(2, limit)
+                val rs = stmt.executeQuery()
+                while (rs.next()) {
+                    list.add(
+                        WatchHistoryItem(
+                            id = rs.getInt("id"),
+                            userId = rs.getLong("user_id"),
+                            provider = rs.getString("provider"),
+                            mediaUrl = rs.getString("media_url"),
+                            title = rs.getString("title"),
+                            posterUrl = rs.getString("poster_url"),
+                            episodeTitle = rs.getString("episode_title"),
+                            episodeData = rs.getString("episode_data"),
+                            updatedAt = rs.getString("updated_at")
+                        )
+                    )
+                }
+            }
+        }
+        return list
+    }
+
+    fun getLastWatched(userId: Long): WatchHistoryItem? {
+        return getWatchHistory(userId, limit = 1).firstOrNull()
+    }
+
+    fun clearWatchHistory(userId: Long): Boolean {
+        return DriverManager.getConnection(url).use { conn ->
+            val sql = "DELETE FROM watch_history WHERE user_id = ?"
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setLong(1, userId)
+                stmt.executeUpdate() > 0
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.telestream.bot
 import com.lagradost.cloudstream3.*
 import com.telestream.config.Config
 import com.telestream.database.Database
+import com.telestream.database.WatchHistoryItem
 import com.telestream.i18n.I18n.t
 import com.telestream.providers.ProviderManager
 import com.telestream.providers.episodes
@@ -78,6 +79,11 @@ data class SourceActionRef(
     val page: Int,
     val sourceName: String,
     val query: String? = null
+)
+data class CategorySectionRef(
+    val provider: String,
+    val sectionName: String,
+    val page: Int = 1
 )
 data class MediaItemSummary(
     val name: String,
@@ -164,68 +170,130 @@ class BotRunner(private val bot: TelegramClient) {
             val userId = inlineQuery.from.id
             Database.ensureUser(userId)
             val activeSource = Database.getUserSource(userId)
+            val isFa = Database.getUserLanguage(userId) == "fa"
 
-            val cleanQuery = rawQuery.replaceFirst("(?i)^[@#/]?(sources?|src)[:\\s]*".toRegex(), "").trim()
+            val isSourceQuery = rawQuery.isBlank() ||
+                    rawQuery.startsWith("@sources", ignoreCase = true) ||
+                    rawQuery.startsWith("/sources", ignoreCase = true) ||
+                    rawQuery.startsWith("sources", ignoreCase = true) ||
+                    rawQuery.startsWith("src", ignoreCase = true)
 
-            val allSources = CloudStreamRepoManager.getAllAggregatedSources()
-            val filtered = if (cleanQuery.isBlank()) {
-                // If blank, show top active & popular sources first
-                allSources.sortedByDescending { it.name.equals(activeSource, ignoreCase = true) }.take(40)
-            } else {
-                allSources.filter { src ->
-                    src.name.contains(cleanQuery, ignoreCase = true) ||
-                    src.language.contains(cleanQuery, ignoreCase = true) ||
-                    src.description?.contains(cleanQuery, ignoreCase = true) == true
-                }.sortedWith(
-                    compareByDescending<AggregatedSource> { it.name.equals(cleanQuery, ignoreCase = true) }
-                        .thenByDescending { it.name.startsWith(cleanQuery, ignoreCase = true) }
-                        .thenByDescending { it.name.contains(cleanQuery, ignoreCase = true) }
-                ).take(40)
-            }
+            val results = if (isSourceQuery) {
+                val cleanQuery = rawQuery.replaceFirst("(?i)^[@#/]?(sources?|src)[:\\s]*".toRegex(), "").trim()
+                val allSources = CloudStreamRepoManager.getAllAggregatedSources()
+                val filtered = if (cleanQuery.isBlank()) {
+                    allSources.sortedByDescending { it.name.equals(activeSource, ignoreCase = true) }.take(40)
+                } else {
+                    allSources.filter { src ->
+                        src.name.contains(cleanQuery, ignoreCase = true) ||
+                        src.language.contains(cleanQuery, ignoreCase = true) ||
+                        src.description?.contains(cleanQuery, ignoreCase = true) == true
+                    }.sortedWith(
+                        compareByDescending<AggregatedSource> { it.name.equals(cleanQuery, ignoreCase = true) }
+                            .thenByDescending { it.name.startsWith(cleanQuery, ignoreCase = true) }
+                            .thenByDescending { it.name.contains(cleanQuery, ignoreCase = true) }
+                    ).take(40)
+                }
 
-            val results = if (filtered.isEmpty()) {
-                val isFa = Database.getUserLanguage(userId) == "fa"
-                listOf(
-                    InlineQueryResultArticle(
-                        id = "empty_0",
-                        title = if (isFa) "❌ هیچ سورسی یافت نشد" else "❌ No sources found",
-                        description = if (isFa) "سورس «$cleanQuery» پیدا نشد. برای مشاهده همه سورس‌ها کلیک کنید."
-                                      else "No source found for \"$cleanQuery\". Tap to view all.",
-                        inputMessageContent = InputTextMessageContent(
-                            messageText = "/sources",
-                            parseMode = null
+                if (filtered.isEmpty()) {
+                    listOf(
+                        InlineQueryResultArticle(
+                            id = "empty_0",
+                            title = if (isFa) "❌ هیچ سورسی یافت نشد" else "❌ No sources found",
+                            description = if (isFa) "سورس «$cleanQuery» پیدا نشد. برای مشاهده همه سورس‌ها کلیک کنید."
+                                          else "No source found for \"$cleanQuery\". Tap to view all.",
+                            inputMessageContent = InputTextMessageContent(
+                                messageText = "/sources",
+                                parseMode = null
+                            )
                         )
                     )
-                )
-            } else {
-                filtered.mapIndexed { idx, src ->
-                    val isActive = src.name.equals(activeSource, ignoreCase = true)
-                    val statusIcon = if (isActive) "🔘" else "📡"
-                    val langTag = "[${src.language.uppercase()}]"
-                    val title = "$statusIcon ${src.name} $langTag"
-                    val desc = "${if (isActive) "Active Source • " else ""}${src.description ?: "Movies & TV Series"}"
-                    val safeHash = (src.name.hashCode().toLong() and 0xFFFFFFFFL).toString(16)
-                    val token = CallbackTokenCache.put(src.name)
+                } else {
+                    filtered.mapIndexed { idx, src ->
+                        val isActive = src.name.equals(activeSource, ignoreCase = true)
+                        val statusIcon = if (isActive) "🔘" else "📡"
+                        val langTag = "[${src.language.uppercase()}]"
+                        val title = "$statusIcon ${src.name} $langTag"
+                        val desc = "${if (isActive) "Active Source • " else ""}${src.description ?: "Movies & TV Series"}"
+                        val safeHash = (src.name.hashCode().toLong() and 0xFFFFFFFFL).toString(16)
+                        val token = CallbackTokenCache.put(src.name)
 
-                    InlineQueryResultArticle(
-                        id = "src_${idx}_$safeHash",
-                        title = title,
-                        description = desc,
-                        inputMessageContent = InputTextMessageContent(
-                            messageText = "/source ${src.name}",
-                            parseMode = null
-                        ),
-                        replyMarkup = InlineKeyboardMarkup(
-                            listOf(
+                        InlineQueryResultArticle(
+                            id = "src_${idx}_$safeHash",
+                            title = title,
+                            description = desc,
+                            inputMessageContent = InputTextMessageContent(
+                                messageText = "/source ${src.name}",
+                                parseMode = null
+                            ),
+                            replyMarkup = InlineKeyboardMarkup(
                                 listOf(
-                                    InlineKeyboardButton(
-                                        text = if (isActive) "🔘 Active: ${src.name}" else "📡 Set Active: ${src.name}",
-                                        callbackData = "src_quick:$token"
+                                    listOf(
+                                        InlineKeyboardButton(
+                                            text = if (isActive) "🔘 Active: ${src.name}" else "📡 Set Active: ${src.name}",
+                                            callbackData = "src_quick:$token"
+                                        )
                                     )
                                 )
                             )
                         )
+                    }
+                }
+            } else {
+                // Live Movie & Series Search
+                val items = ProviderManager.searchInProvider(activeSource, rawQuery)
+                if (items.isEmpty()) {
+                    listOf(
+                        InlineQueryResultArticle(
+                            id = "no_movie_0",
+                            title = if (isFa) "❌ عنوانی یافت نشد" else "❌ No results found",
+                            description = if (isFa) "«$rawQuery» در منبع $activeSource پیدا نشد. برای تغییر منبع بزنید."
+                                          else "No media found for \"$rawQuery\" in $activeSource. Tap to browse sources.",
+                            inputMessageContent = InputTextMessageContent(
+                                messageText = "/sources",
+                                parseMode = null
+                            )
+                        )
                     )
+                } else {
+                    items.take(30).mapIndexed { idx, item ->
+                        val safeHash = (item.url.hashCode().toLong() and 0xFFFFFFFFL).toString(16)
+                        val token = CallbackTokenCache.put(MediaRef(activeSource, item.url))
+                        val yearStr = item.year?.let { " ($it)" } ?: ""
+                        val typeStr = item.type?.name ?: "Media"
+                        val title = "🎬 ${item.name}$yearStr"
+                        val desc = "[$typeStr] • 📡 $activeSource"
+                        val thumb = sanitizeTelegramUrl(item.posterUrl)
+                        val caption = buildString {
+                            append("🎬 *${item.name}*$yearStr\n\n")
+                            append("🌐 *Source:* $activeSource\n")
+                            append("📁 *Type:* $typeStr\n")
+                            val sanitizedUrl = sanitizeTelegramUrl(item.url)
+                            if (!sanitizedUrl.isNullOrBlank() && sanitizedUrl.startsWith("http")) {
+                                append("🔗 [Website Link]($sanitizedUrl)\n")
+                            }
+                        }
+                        InlineQueryResultArticle(
+                            id = "mov_${idx}_$safeHash",
+                            title = title,
+                            description = desc,
+                            thumbnailUrl = thumb,
+                            inputMessageContent = InputTextMessageContent(
+                                messageText = caption,
+                                parseMode = "Markdown"
+                            ),
+                            replyMarkup = InlineKeyboardMarkup(
+                                listOf(
+                                    listOf(
+                                        InlineKeyboardButton(
+                                            text = if (isFa) "▶️ تماشا و پخش آنلاین" else "▶️ Watch & Stream",
+                                            callbackData = "v:$token"
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    }
                 }
             }
 
@@ -238,8 +306,25 @@ class BotRunner(private val bot: TelegramClient) {
         }
     }
 
-    private fun getMainMenuKeyboard(lang: String, activeSource: String, isAdmin: Boolean = false): InlineKeyboardMarkup {
+    private fun getMainMenuKeyboard(lang: String, activeSource: String, isAdmin: Boolean = false, userId: Long = 0L): InlineKeyboardMarkup {
         val rows = mutableListOf<List<InlineKeyboardButton>>()
+
+        // Resume / Continue watching button if history exists
+        if (userId != 0L) {
+            val lastWatched = Database.getLastWatched(userId)
+            if (lastWatched != null) {
+                val resumeToken = CallbackTokenCache.put(lastWatched)
+                rows.add(
+                    listOf(
+                        InlineKeyboardButton(
+                            text = t("btn_continue_watch", lang, lastWatched.title.take(24)),
+                            callbackData = "resume:$resumeToken"
+                        )
+                    )
+                )
+            }
+        }
+
         val webAppUrl = Config.webAppUrl
         if (webAppUrl.isNotBlank() && webAppUrl.startsWith("https://")) {
             rows.add(
@@ -265,20 +350,28 @@ class BotRunner(private val bot: TelegramClient) {
                 InlineKeyboardButton(text = t("btn_latest", lang), callbackData = "feed:latest")
             )
         )
-        // Row 3: Active Source & Source Manager
+        // Row 3: Surprise Me & Categories
         rows.add(
             listOf(
-                InlineKeyboardButton(text = "📡 $activeSource (${t("btn_sources", lang)})", callbackData = "menu:sources")
+                InlineKeyboardButton(text = t("btn_random", lang), callbackData = "menu:random"),
+                InlineKeyboardButton(text = t("btn_categories", lang), callbackData = "menu:categories")
             )
         )
-        // Row 4: Language & Donate
+        // Row 4: Watch History & Active Source
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_history", lang), callbackData = "menu:history"),
+                InlineKeyboardButton(text = "📡 $activeSource", callbackData = "menu:sources")
+            )
+        )
+        // Row 5: Language & Donate
         rows.add(
             listOf(
                 InlineKeyboardButton(text = t("btn_lang", lang), callbackData = "menu:lang"),
                 InlineKeyboardButton(text = t("btn_donate", lang), callbackData = "menu:donate")
             )
         )
-        // Optional Row 5: Admin Panel (only for admins)
+        // Optional Row 6: Admin Panel (only for admins)
         if (isAdmin) {
             rows.add(
                 listOf(
@@ -306,7 +399,7 @@ class BotRunner(private val bot: TelegramClient) {
         when {
             cmd == "/start" -> {
                 userSearchPending.remove(userId)
-                bot.sendMessage(chatId, t("welcome", lang), replyMarkup = getMainMenuKeyboard(lang, activeSource, isAdmin))
+                bot.sendMessage(chatId, t("welcome", lang), replyMarkup = getMainMenuKeyboard(lang, activeSource, isAdmin, userId))
             }
 
             cmd == "/ping" -> {
@@ -349,6 +442,21 @@ class BotRunner(private val bot: TelegramClient) {
                 showFeedScreen(chatId, userId, lang, "latest")
             }
 
+            cmd == "/random" -> {
+                userSourceFilterPending.remove(userId)
+                showRandomPick(chatId, userId, lang, activeSource)
+            }
+
+            cmd == "/categories" -> {
+                userSourceFilterPending.remove(userId)
+                showCategories(chatId, userId, lang, activeSource)
+            }
+
+            cmd == "/history" -> {
+                userSourceFilterPending.remove(userId)
+                showWatchHistory(chatId, userId, lang)
+            }
+
             cmd == "/sources" || cmd == "/manage_sources" || cmd == "/enabled_sources" -> {
                 userSourceFilterPending.remove(userId)
                 showSourcesManager(chatId, userId, lang)
@@ -375,7 +483,7 @@ class BotRunner(private val bot: TelegramClient) {
                         bot.sendMessage(
                             chatId,
                             t("source_switched_ready", lang, matched.name, matched.language.uppercase()),
-                            replyMarkup = getMainMenuKeyboard(lang, matched.name, isAdmin)
+                            replyMarkup = getMainMenuKeyboard(lang, matched.name, isAdmin, userId)
                         )
                     } else if (matches.isNotEmpty()) {
                         showSourcesManager(chatId, userId, lang, filterLang = "all", page = 0, query = arg)
@@ -1140,6 +1248,294 @@ class BotRunner(private val bot: TelegramClient) {
         }
     }
 
+    private suspend fun showRandomPick(
+        chatId: Long,
+        userId: Long,
+        lang: String,
+        sourceName: String? = null,
+        messageId: Long? = null
+    ) {
+        val activeSource = sourceName ?: Database.getUserSource(userId)
+        val randomItem = ProviderManager.getRandomMedia(activeSource)
+        if (randomItem == null) {
+            val emptyMsg = "${t("random_title", lang)}\n\n${t("random_empty", lang)}"
+            val kb = InlineKeyboardMarkup(
+                listOf(
+                    listOf(
+                        InlineKeyboardButton(text = t("btn_popular", lang), callbackData = "feed:popular"),
+                        InlineKeyboardButton(text = t("btn_latest", lang), callbackData = "feed:latest")
+                    ),
+                    listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close"))
+                )
+            )
+            if (messageId != null) bot.editMessageText(chatId, messageId, emptyMsg, replyMarkup = kb)
+            else bot.sendMessage(chatId, emptyMsg, replyMarkup = kb)
+            return
+        }
+
+        val token = CallbackTokenCache.put(MediaRef(activeSource, randomItem.url))
+        val details = ProviderManager.load(activeSource, randomItem.url) ?: run {
+            bot.sendMessage(chatId, "⚠️ Could not load picked title details.")
+            return
+        }
+        val isSaved = Database.isBookmarked(userId, randomItem.url)
+        val cardText = "${t("random_title", lang)}\n\n" + t(
+            "details_card",
+            lang,
+            details.name,
+            details.year?.toString() ?: "N/A",
+            details.score?.toInt(100)?.let { "${it / 10.0}" } ?: "N/A",
+            details.type.name,
+            details.apiName,
+            (details.plot ?: "N/A").take(350)
+        )
+
+        val buttons = mutableListOf<List<InlineKeyboardButton>>()
+        val episodes = details.episodes ?: emptyList()
+        if ((details.type == TvType.TvSeries || details.type == TvType.Anime) && episodes.isNotEmpty()) {
+            buttons.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = "📺 ${t("btn_episodes", lang)} (${episodes.size})",
+                        callbackData = "eps:$token:0"
+                    )
+                )
+            )
+        } else {
+            val mediaData = (details as? MovieLoadResponse)?.dataUrl ?: randomItem.url
+            val epToken = CallbackTokenCache.put(
+                EpisodeRef(activeSource, token, mediaData, details.name, 0)
+            )
+            buttons.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = t("btn_watch", lang),
+                        callbackData = "q:$epToken"
+                    )
+                )
+            )
+        }
+
+        buttons.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_random", lang), callbackData = "menu:random"),
+                InlineKeyboardButton(text = if (isSaved) t("btn_unbookmark", lang) else t("btn_bookmark", lang), callbackData = "${if (isSaved) "unbm" else "bm"}:$token")
+            )
+        )
+        buttons.add(listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")))
+
+        val kb = InlineKeyboardMarkup(buttons)
+        if (!details.posterUrl.isNullOrBlank() && details.posterUrl!!.startsWith("http")) {
+            val sent = bot.sendPhoto(chatId, details.posterUrl!!, caption = cardText, replyMarkup = kb) != null
+            if (!sent) bot.sendMessage(chatId, cardText, replyMarkup = kb)
+        } else {
+            bot.sendMessage(chatId, cardText, replyMarkup = kb)
+        }
+    }
+
+    private suspend fun showWatchHistory(
+        chatId: Long,
+        userId: Long,
+        lang: String,
+        messageId: Long? = null
+    ) {
+        val history = Database.getWatchHistory(userId)
+        val rows = mutableListOf<List<InlineKeyboardButton>>()
+
+        if (history.isEmpty()) {
+            val emptyMsg = t("history_empty", lang)
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(text = t("btn_search", lang), callbackData = "menu:search"),
+                    InlineKeyboardButton(text = t("btn_popular", lang), callbackData = "feed:popular")
+                )
+            )
+            rows.add(listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")))
+            val kb = InlineKeyboardMarkup(rows)
+            if (messageId != null) bot.editMessageText(chatId, messageId, emptyMsg, replyMarkup = kb)
+            else bot.sendMessage(chatId, emptyMsg, replyMarkup = kb)
+            return
+        }
+
+        val titleText = t("history_title", lang)
+        for (item in history.take(10)) {
+            val token = CallbackTokenCache.put(item)
+            val epInfo = if (!item.episodeTitle.isNullOrBlank()) " • ${item.episodeTitle}" else ""
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = "▶️ ${item.title.take(24)}$epInfo",
+                        callbackData = "resume:$token"
+                    )
+                )
+            )
+        }
+
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = if (lang == "fa") "🗑️ پاک کردن تاریخچه" else "🗑️ Clear History", callbackData = "history:clear"),
+                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+            )
+        )
+
+        val kb = InlineKeyboardMarkup(rows)
+        if (messageId != null) {
+            val ed = bot.editMessageText(chatId, messageId, titleText, replyMarkup = kb)
+            if (!ed) bot.sendMessage(chatId, titleText, replyMarkup = kb)
+        } else {
+            bot.sendMessage(chatId, titleText, replyMarkup = kb)
+        }
+    }
+
+    private suspend fun showCategories(
+        chatId: Long,
+        userId: Long,
+        lang: String,
+        sourceName: String? = null,
+        messageId: Long? = null
+    ) {
+        val activeSource = sourceName ?: Database.getUserSource(userId)
+        val sections = ProviderManager.getMainPageSections(activeSource)
+        val rows = mutableListOf<List<InlineKeyboardButton>>()
+
+        if (sections.isEmpty()) {
+            val emptyMsg = "${t("categories_title", lang, activeSource)}\n\n${t("categories_empty", lang)}"
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(text = t("btn_popular", lang), callbackData = "feed:popular"),
+                    InlineKeyboardButton(text = t("btn_latest", lang), callbackData = "feed:latest")
+                )
+            )
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(text = t("btn_switch_source", lang), callbackData = "menu:sources"),
+                    InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                )
+            )
+            val kb = InlineKeyboardMarkup(rows)
+            if (messageId != null) bot.editMessageText(chatId, messageId, emptyMsg, replyMarkup = kb)
+            else bot.sendMessage(chatId, emptyMsg, replyMarkup = kb)
+            return
+        }
+
+        val headerText = t("categories_title", lang, activeSource)
+        val chunked = sections.chunked(2)
+        for (pair in chunked) {
+            val row = pair.map { sec ->
+                val token = CallbackTokenCache.put(CategorySectionRef(activeSource, sec.name, 1))
+                InlineKeyboardButton(
+                    text = "📂 ${sec.name.take(20)}",
+                    callbackData = "cat_pick:$token"
+                )
+            }
+            rows.add(row)
+        }
+
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = "${t("btn_switch_source", lang)} ($activeSource)", callbackData = "menu:sources"),
+                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+            )
+        )
+
+        val kb = InlineKeyboardMarkup(rows)
+        if (messageId != null) {
+            val ed = bot.editMessageText(chatId, messageId, headerText, replyMarkup = kb)
+            if (!ed) bot.sendMessage(chatId, headerText, replyMarkup = kb)
+        } else {
+            bot.sendMessage(chatId, headerText, replyMarkup = kb)
+        }
+    }
+
+    private suspend fun showCategoryItems(
+        chatId: Long,
+        userId: Long,
+        lang: String,
+        provider: String,
+        sectionName: String,
+        page: Int = 1,
+        messageId: Long? = null
+    ) {
+        val items = ProviderManager.getSectionItems(provider, sectionName, page)
+        if (items.isEmpty()) {
+            val emptyMsg = "📂 *$sectionName* ($provider)\n\n${t("feed_no_items", lang)}"
+            val kb = InlineKeyboardMarkup(
+                listOf(
+                    listOf(InlineKeyboardButton(text = t("btn_categories", lang), callbackData = "menu:categories")),
+                    listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close"))
+                )
+            )
+            if (messageId != null) bot.editMessageText(chatId, messageId, emptyMsg, replyMarkup = kb)
+            else bot.sendMessage(chatId, emptyMsg, replyMarkup = kb)
+            return
+        }
+
+        val summaries = items.take(8).map { item ->
+            MediaItemSummary(
+                name = item.name,
+                url = sanitizeTelegramUrl(item.url) ?: item.url,
+                apiName = provider,
+                posterUrl = item.posterUrl,
+                type = item.type,
+                year = item.year
+            )
+        }
+
+        val carouselRef = MediaCarouselRef(
+            contextType = "category",
+            sourceName = provider,
+            query = sectionName,
+            feedType = null,
+            page = page,
+            items = summaries,
+            currentIndex = 0
+        )
+        val carouselToken = CallbackTokenCache.put(carouselRef)
+
+        val extraRows = listOf(
+            listOf(
+                InlineKeyboardButton(text = t("btn_categories", lang), callbackData = "menu:categories"),
+                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+            )
+        )
+
+        val kb = buildCarouselKeyboard(
+            carouselToken = carouselToken,
+            items = summaries,
+            currentIndex = 0,
+            contextType = "category",
+            lang = lang,
+            extraRows = extraRows
+        )
+
+        val firstItem = summaries[0]
+        val caption = buildString {
+            append("📂 *$sectionName*\n")
+            append("Source: *$provider*\n\n")
+            append(t("poster_viewing_item", lang, 1, firstItem.name))
+            firstItem.year?.let { append(" ($it)") }
+        }
+
+        val targetPoster = firstItem.posterUrl?.takeIf { it.startsWith("http") }
+        if (messageId != null) {
+            val edited = if (targetPoster != null) {
+                bot.editMessageMedia(chatId, messageId, targetPoster, caption = caption, replyMarkup = kb)
+            } else {
+                bot.editMessageCaption(chatId, messageId, caption = caption, replyMarkup = kb)
+            }
+            if (!edited) {
+                bot.editMessageText(chatId, messageId, caption, replyMarkup = kb)
+            }
+        } else {
+            if (targetPoster != null) {
+                val sent = bot.sendPhoto(chatId, targetPoster, caption = caption, replyMarkup = kb) != null
+                if (!sent) bot.sendMessage(chatId, caption, replyMarkup = kb)
+            } else {
+                bot.sendMessage(chatId, caption, replyMarkup = kb)
+            }
+        }
+    }
+
     private suspend fun handleCallback(callback: CallbackQuery) {
         val chatId = callback.message?.chat?.id ?: return
         val messageId = callback.message.messageId
@@ -1167,7 +1563,7 @@ class BotRunner(private val bot: TelegramClient) {
                     chatId,
                     messageId,
                     t("welcome", newLang),
-                    replyMarkup = getMainMenuKeyboard(newLang, activeSource, isAdmin)
+                    replyMarkup = getMainMenuKeyboard(newLang, activeSource, isAdmin, userId)
                 )
             }
 
@@ -1296,7 +1692,7 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.sendMessage(
                     chatId,
                     t("source_switched_ready", lang, srcName, langTag),
-                    replyMarkup = getMainMenuKeyboard(lang, srcName, Config.isAdmin(userId))
+                    replyMarkup = getMainMenuKeyboard(lang, srcName, Config.isAdmin(userId), userId)
                 )
             }
 
@@ -1458,10 +1854,10 @@ class BotRunner(private val bot: TelegramClient) {
                     chatId,
                     messageId,
                     t("welcome", lang),
-                    replyMarkup = getMainMenuKeyboard(lang, activeSource)
+                    replyMarkup = getMainMenuKeyboard(lang, activeSource, Config.isAdmin(userId), userId)
                 )
                 if (!edited) {
-                    bot.sendMessage(chatId, t("welcome", lang), replyMarkup = getMainMenuKeyboard(lang, activeSource))
+                    bot.sendMessage(chatId, t("welcome", lang), replyMarkup = getMainMenuKeyboard(lang, activeSource, Config.isAdmin(userId), userId))
                 }
                 bot.answerCallbackQuery(callback.id)
             }
@@ -1482,38 +1878,48 @@ class BotRunner(private val bot: TelegramClient) {
                 ref.currentIndex = safeIndex
                 val currentItem = ref.items[safeIndex]
 
-                val isSearch = ref.contextType == "search"
-                val extraRows = if (isSearch) {
-                    val queryToken = CallbackTokenCache.put(ref.query ?: "")
-                    listOf(
+                val extraRows = when (ref.contextType) {
+                    "search" -> {
+                        val queryToken = CallbackTokenCache.put(ref.query ?: "")
                         listOf(
-                            InlineKeyboardButton(
-                                text = t("btn_search_another_source", lang),
-                                callbackData = "src_another:$queryToken"
-                            )
-                        ),
-                        listOf(
-                            InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
-                        )
-                    )
-                } else {
-                    val isPopular = ref.feedType == "popular"
-                    listOf(
-                        listOf(
-                            InlineKeyboardButton(
-                                text = if (isPopular) "🔘 ${t("btn_popular", lang)}" else t("btn_popular", lang),
-                                callbackData = "feed:popular"
+                            listOf(
+                                InlineKeyboardButton(
+                                    text = t("btn_search_another_source", lang),
+                                    callbackData = "src_another:$queryToken"
+                                )
                             ),
-                            InlineKeyboardButton(
-                                text = if (!isPopular) "🔘 ${t("btn_latest", lang)}" else t("btn_latest", lang),
-                                callbackData = "feed:latest"
+                            listOf(
+                                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                             )
-                        ),
-                        listOf(
-                            InlineKeyboardButton(text = "${t("btn_switch_source", lang)} (${ref.sourceName})", callbackData = "feed_picksrc:${ref.feedType ?: "popular"}"),
-                            InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                         )
-                    )
+                    }
+                    "category" -> {
+                        listOf(
+                            listOf(
+                                InlineKeyboardButton(text = t("btn_categories", lang), callbackData = "menu:categories"),
+                                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                            )
+                        )
+                    }
+                    else -> {
+                        val isPopular = ref.feedType == "popular"
+                        listOf(
+                            listOf(
+                                InlineKeyboardButton(
+                                    text = if (isPopular) "🔘 ${t("btn_popular", lang)}" else t("btn_popular", lang),
+                                    callbackData = "feed:popular"
+                                ),
+                                InlineKeyboardButton(
+                                    text = if (!isPopular) "🔘 ${t("btn_latest", lang)}" else t("btn_latest", lang),
+                                    callbackData = "feed:latest"
+                                )
+                            ),
+                            listOf(
+                                InlineKeyboardButton(text = "${t("btn_switch_source", lang)} (${ref.sourceName})", callbackData = "feed_picksrc:${ref.feedType ?: "popular"}"),
+                                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                            )
+                        )
+                    }
                 }
 
                 val keyboard = buildCarouselKeyboard(
@@ -1525,20 +1931,31 @@ class BotRunner(private val bot: TelegramClient) {
                     extraRows = extraRows
                 )
 
-                val caption = if (isSearch) {
-                    buildString {
-                        append(t("search_results", lang, ref.query ?: ""))
-                        append("\n(📡 ${ref.sourceName} • ${ref.items.size} items)\n\n")
-                        append(t("poster_viewing_item", lang, safeIndex + 1, currentItem.name))
-                        currentItem.year?.let { append(" ($it)") }
+                val caption = when (ref.contextType) {
+                    "search" -> {
+                        buildString {
+                            append(t("search_results", lang, ref.query ?: ""))
+                            append("\n(📡 ${ref.sourceName} • ${ref.items.size} items)\n\n")
+                            append(t("poster_viewing_item", lang, safeIndex + 1, currentItem.name))
+                            currentItem.year?.let { append(" ($it)") }
+                        }
                     }
-                } else {
-                    val titleKey = if (ref.feedType == "popular") "feed_popular_title" else "feed_latest_title"
-                    buildString {
-                        append(t(titleKey, lang, ref.sourceName))
-                        append("\n\n")
-                        append(t("poster_viewing_item", lang, safeIndex + 1, currentItem.name))
-                        currentItem.year?.let { append(" ($it)") }
+                    "category" -> {
+                        buildString {
+                            append("📂 *${ref.query ?: "Category"}*\n")
+                            append("Source: *${ref.sourceName}*\n\n")
+                            append(t("poster_viewing_item", lang, safeIndex + 1, currentItem.name))
+                            currentItem.year?.let { append(" ($it)") }
+                        }
+                    }
+                    else -> {
+                        val titleKey = if (ref.feedType == "popular") "feed_popular_title" else "feed_latest_title"
+                        buildString {
+                            append(t(titleKey, lang, ref.sourceName))
+                            append("\n\n")
+                            append(t("poster_viewing_item", lang, safeIndex + 1, currentItem.name))
+                            currentItem.year?.let { append(" ($it)") }
+                        }
                     }
                 }
 
@@ -1808,11 +2225,49 @@ class BotRunner(private val bot: TelegramClient) {
                 val sortedLinks = links.sortedByDescending { it.quality }
                 val buttons = mutableListOf<List<InlineKeyboardButton>>()
 
+                // Record watch history
+                val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
+                val mediaUrl = seriesRef?.url ?: epRef.episodeData
+                Database.recordWatch(
+                    userId = userId,
+                    provider = epRef.provider,
+                    mediaUrl = mediaUrl,
+                    title = epRef.episodeTitle,
+                    posterUrl = null,
+                    episodeTitle = epRef.episodeTitle,
+                    episodeData = sortedLinks.firstOrNull()?.url
+                )
+
+                // In-App Web Video Player button (Telegram Mini App)
+                val webAppUrl = Config.webAppUrl
+                if (webAppUrl.isNotBlank() && webAppUrl.startsWith("https://")) {
+                    val encodedProvider = java.net.URLEncoder.encode(epRef.provider, "UTF-8")
+                    val encodedData = java.net.URLEncoder.encode(epRef.episodeData, "UTF-8")
+                    val encodedTitle = java.net.URLEncoder.encode(epRef.episodeTitle, "UTF-8")
+                    val playerUrl = "$webAppUrl#/watch?provider=$encodedProvider&data=$encodedData&title=$encodedTitle"
+                    buttons.add(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = t("btn_web_player", lang),
+                                webApp = WebAppInfo(playerUrl)
+                            )
+                        )
+                    )
+                }
+
+                // Smart Stream Badges
                 for (link in sortedLinks.take(10)) {
-                    val icon = if (link.isM3u8) "📡" else "📥"
-                    val typeDesc = if (link.isM3u8) "Stream" else "Direct"
-                    val qualityDesc = if (link.quality > 0) "${link.quality}p" else "Auto"
-                    val label = "$icon [$qualityDesc] ${link.name.take(18)} ($typeDesc)"
+                    val icon = if (link.isM3u8) "⚡" else "📥"
+                    val typeDesc = if (link.isM3u8) "HLS Stream" else "Direct"
+                    val qualityBadge = when {
+                        link.quality >= 2160 -> "4K UHD"
+                        link.quality >= 1080 -> "1080p FHD"
+                        link.quality >= 720 -> "720p HD"
+                        link.quality >= 480 -> "480p SD"
+                        link.quality > 0 -> "${link.quality}p"
+                        else -> "Auto"
+                    }
+                    val label = "$icon [ $qualityBadge • $typeDesc ] ${link.name.take(16)}"
                     val cleanLink = sanitizeTelegramUrl(link.url) ?: link.url
 
                     buttons.add(
@@ -1826,7 +2281,6 @@ class BotRunner(private val bot: TelegramClient) {
                 }
 
                 // Website URL button
-                val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
                 val rawWebUrl = epRef.episodeData.takeIf { it.startsWith("http") }
                     ?: seriesRef?.url?.takeIf { it.startsWith("http") }
                 val webUrl = sanitizeTelegramUrl(rawWebUrl)
@@ -1880,6 +2334,120 @@ class BotRunner(private val bot: TelegramClient) {
                 if (ref != null) {
                     Database.removeBookmark(userId, ref.url)
                     bot.answerCallbackQuery(callback.id, t("unbookmarked", lang), showAlert = true)
+                }
+            }
+
+            data == "menu:random" -> {
+                showRandomPick(chatId, userId, lang, messageId = messageId)
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data == "menu:categories" -> {
+                showCategories(chatId, userId, lang, messageId = messageId)
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data == "menu:history" -> {
+                showWatchHistory(chatId, userId, lang, messageId = messageId)
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data == "history:clear" -> {
+                Database.clearWatchHistory(userId)
+                bot.answerCallbackQuery(callback.id, if (lang == "fa") "تاریخچه پاک شد" else "History cleared", showAlert = true)
+                showWatchHistory(chatId, userId, lang, messageId = messageId)
+            }
+
+            data.startsWith("resume:") -> {
+                val token = data.removePrefix("resume:")
+                val historyItem = CallbackTokenCache.get<WatchHistoryItem>(token)
+                if (historyItem != null) {
+                    bot.answerCallbackQuery(callback.id)
+                    val mediaToken = CallbackTokenCache.put(MediaRef(historyItem.provider, historyItem.mediaUrl))
+                    val details = ProviderManager.load(historyItem.provider, historyItem.mediaUrl)
+                    if (details != null) {
+                        val isSaved = Database.isBookmarked(userId, historyItem.mediaUrl)
+                        val cardText = t(
+                            "details_card",
+                            lang,
+                            details.name,
+                            details.year?.toString() ?: "N/A",
+                            details.score?.toInt(100)?.let { "${it / 10.0}" } ?: "N/A",
+                            details.type.name,
+                            details.apiName,
+                            (details.plot ?: "N/A").take(350)
+                        )
+                        val buttons = mutableListOf<List<InlineKeyboardButton>>()
+                        val episodes = details.episodes ?: emptyList()
+                        if ((details.type == TvType.TvSeries || details.type == TvType.Anime) && episodes.isNotEmpty()) {
+                            buttons.add(
+                                listOf(
+                                    InlineKeyboardButton(
+                                        text = "📺 ${t("btn_episodes", lang)} (${episodes.size})",
+                                        callbackData = "eps:$mediaToken:0"
+                                    )
+                                )
+                            )
+                        } else {
+                            val mediaData = (details as? MovieLoadResponse)?.dataUrl ?: historyItem.mediaUrl
+                            val epToken = CallbackTokenCache.put(
+                                EpisodeRef(historyItem.provider, mediaToken, mediaData, details.name, 0)
+                            )
+                            buttons.add(
+                                listOf(
+                                    InlineKeyboardButton(
+                                        text = t("btn_watch", lang),
+                                        callbackData = "q:$epToken"
+                                    )
+                                )
+                            )
+                        }
+                        val rawPageUrl = details.url.takeIf { it.startsWith("http") } ?: historyItem.mediaUrl.takeIf { it.startsWith("http") }
+                        val pageUrl = sanitizeTelegramUrl(rawPageUrl)
+                        if (!pageUrl.isNullOrBlank()) {
+                            buttons.add(
+                                listOf(
+                                    InlineKeyboardButton(
+                                        text = t("btn_open_website", lang),
+                                        url = pageUrl
+                                    )
+                                )
+                            )
+                        }
+                        val bmAction = if (isSaved) "unbm" else "bm"
+                        val bmText = if (isSaved) t("btn_unbookmark", lang) else t("btn_bookmark", lang)
+                        buttons.add(
+                            listOf(
+                                InlineKeyboardButton(
+                                    text = bmText,
+                                    callbackData = "$bmAction:$mediaToken"
+                                )
+                            )
+                        )
+                        buttons.add(listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")))
+                        val kb = InlineKeyboardMarkup(buttons)
+                        if (!details.posterUrl.isNullOrBlank() && details.posterUrl!!.startsWith("http")) {
+                            val sent = bot.sendPhoto(chatId, details.posterUrl!!, caption = cardText, replyMarkup = kb) != null
+                            if (!sent) bot.sendMessage(chatId, cardText, replyMarkup = kb)
+                        } else {
+                            bot.sendMessage(chatId, cardText, replyMarkup = kb)
+                        }
+                    } else {
+                        bot.sendMessage(chatId, "⚠️ Could not load media details from ${historyItem.provider}.")
+                    }
+                } else {
+                    bot.answerCallbackQuery(callback.id, "Session expired", showAlert = true)
+                }
+            }
+
+            data.startsWith("cat_pick:") -> {
+                val token = data.removePrefix("cat_pick:")
+                val catRef = CallbackTokenCache.get<CategorySectionRef>(token)
+                if (catRef != null) {
+                    bot.answerCallbackQuery(callback.id)
+                    showCategoryItems(chatId, userId, lang, catRef.provider, catRef.sectionName, catRef.page, messageId = messageId)
+                } else {
+                    bot.answerCallbackQuery(callback.id, "Session expired", showAlert = true)
                 }
             }
         }

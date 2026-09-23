@@ -15,6 +15,7 @@ import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
 import io.ktor.server.engine.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.delay
@@ -147,6 +148,93 @@ fun main(): Unit = runBlocking {
                 val bookmarks = Database.getBookmarks(userId)
                 call.respondText(mapper.writeValueAsString(bookmarks), ContentType.Application.Json)
             }
+
+            // API: Provider Categories / Main Page Sections
+            get("/api/sections") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                val provider = call.request.queryParameters["provider"] ?: "KissKH"
+                val sections = ProviderManager.getMainPageSections(provider)
+                val list = sections.map {
+                    mapOf("name" to it.name, "url" to it.data, "horizontal" to it.horizontalImages)
+                }
+                call.respondText(mapper.writeValueAsString(list), ContentType.Application.Json)
+            }
+
+            // API: Items in a Category / Section
+            get("/api/section") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                val provider = call.request.queryParameters["provider"] ?: "KissKH"
+                val name = call.request.queryParameters["name"] ?: ""
+                val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+                val items = ProviderManager.getSectionItems(provider, name, page)
+                call.respondText(mapper.writeValueAsString(items), ContentType.Application.Json)
+            }
+
+            // API: Popular Feed
+            get("/api/popular") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                val provider = call.request.queryParameters["provider"] ?: "KissKH"
+                val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+                val items = ProviderManager.getPopular(provider, page)
+                call.respondText(mapper.writeValueAsString(items), ContentType.Application.Json)
+            }
+
+            // API: Latest Feed
+            get("/api/latest") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                val provider = call.request.queryParameters["provider"] ?: "KissKH"
+                val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+                val items = ProviderManager.getLatest(provider, page)
+                call.respondText(mapper.writeValueAsString(items), ContentType.Application.Json)
+            }
+
+            // API: Random Media Pick
+            get("/api/random") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                val provider = call.request.queryParameters["provider"] ?: "KissKH"
+                val item = ProviderManager.getRandomMedia(provider)
+                if (item != null) {
+                    call.respondText(mapper.writeValueAsString(item), ContentType.Application.Json)
+                } else {
+                    call.respondText("{}", ContentType.Application.Json)
+                }
+            }
+
+            // API: Watch History
+            get("/api/history") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                val userId = call.request.queryParameters["userId"]?.toLongOrNull() ?: 0L
+                val history = Database.getWatchHistory(userId)
+                call.respondText(mapper.writeValueAsString(history), ContentType.Application.Json)
+            }
+            post("/api/history") {
+                call.response.headers.append("Access-Control-Allow-Origin", "*")
+                try {
+                    val body = call.receiveText()
+                    val node = mapper.readTree(body)
+                    val userId = node.get("userId")?.asLong() ?: 0L
+                    val title = node.get("title")?.asText() ?: ""
+                    val url = node.get("url")?.asText() ?: ""
+                    val posterUrl = node.get("posterUrl")?.asText()
+                    val provider = node.get("provider")?.asText() ?: ""
+                    val episodeName = node.get("episodeName")?.asText()
+                    val streamUrl = node.get("streamUrl")?.asText()
+                    if (title.isNotBlank() && url.isNotBlank()) {
+                        Database.recordWatch(
+                            userId = userId,
+                            provider = provider,
+                            mediaUrl = url,
+                            title = title,
+                            posterUrl = posterUrl,
+                            episodeTitle = episodeName,
+                            episodeData = streamUrl
+                        )
+                    }
+                    call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+                } catch (e: Exception) {
+                    call.respondText("""{"status":"error","message":"${e.message}"}""", ContentType.Application.Json)
+                }
+            }
         }
     }.start(wait = false)
 
@@ -191,6 +279,9 @@ fun main(): Unit = runBlocking {
                     BotCommand("start", "🎬 Main Menu & Dashboard"),
                     BotCommand("popular", "🔥 Popular & Trending Movies/Series"),
                     BotCommand("latest", "🆕 Latest Releases"),
+                    BotCommand("random", "🎲 Surprise Me / Random Pick"),
+                    BotCommand("categories", "📂 Categories & Sections"),
+                    BotCommand("history", "🕒 Continue Watching / History"),
                     BotCommand("search", "🔍 Search Movies & Series"),
                     BotCommand("sources", "📡 Movie & Series Sources"),
                     BotCommand("bookmarks", "⭐ Saved Bookmarks"),
@@ -204,6 +295,9 @@ fun main(): Unit = runBlocking {
                     BotCommand("start", "🎬 منوی اصلی و داشبورد"),
                     BotCommand("popular", "🔥 فیلم‌ها و سریال‌های محبوب و داغ"),
                     BotCommand("latest", "🆕 جدیدترین فیلم‌ها و سریال‌ها"),
+                    BotCommand("random", "🎲 پیشنهاد شانسی و تصادفی"),
+                    BotCommand("categories", "📂 بخش‌ها و دسته‌بندی‌های منبع"),
+                    BotCommand("history", "🕒 ادامه تماشا و تاریخچه"),
                     BotCommand("search", "🔍 جستجوی فیلم و سریال"),
                     BotCommand("sources", "📡 منابع و سورس‌های فیلم و سریال"),
                     BotCommand("bookmarks", "⭐ فیلم‌ها و سریال‌های نشان‌شده"),

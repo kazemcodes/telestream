@@ -250,6 +250,40 @@ object ProviderManager {
         return results
     }
 
+    fun getMainPageSections(providerName: String): List<MainPageData> {
+        val provider = getProvider(providerName) ?: return emptyList()
+        return provider.mainPage.filter { it.name.isNotBlank() }
+    }
+
+    suspend fun getSectionItems(providerName: String, sectionName: String, page: Int = 1): List<SearchResponse> {
+        val provider = getProvider(providerName) ?: return emptyList()
+        val nsfwAllowed = Database.isNsfwEnabled()
+        val section = provider.mainPage.firstOrNull { it.name.equals(sectionName, ignoreCase = true) }
+            ?: provider.mainPage.firstOrNull() ?: return emptyList()
+
+        return try {
+            val req = MainPageRequest(section.name, section.data, section.horizontalImages)
+            val list = provider.getMainPage(page, req)?.items?.flatMap { it.list } ?: emptyList()
+            list.filter { it.type != TvType.NSFW || nsfwAllowed }
+        } catch (e: Throwable) {
+            val err = classifyError(e)
+            lastErrors[provider.name.lowercase()] = err
+            emptyList()
+        }
+    }
+
+    suspend fun getRandomMedia(providerName: String): SearchResponse? {
+        val popular = getPopular(providerName, page = 1)
+        if (popular.isNotEmpty()) {
+            return popular.random()
+        }
+        val latest = getLatest(providerName, page = 1)
+        if (latest.isNotEmpty()) {
+            return latest.random()
+        }
+        return null
+    }
+
     @Deprecated("Global multi-source search is disabled. Use searchInProvider instead.", level = DeprecationLevel.ERROR)
     suspend fun search(query: String): List<SearchResponse> {
         throw UnsupportedOperationException("Global multi-source search is strictly disabled. Use searchInProvider(providerName, query) instead.")
