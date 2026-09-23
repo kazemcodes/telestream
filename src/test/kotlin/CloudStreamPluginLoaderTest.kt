@@ -106,6 +106,17 @@ class CloudStreamPluginLoaderTest {
         assertNotNull(loaded, "StreamPlay.load should succeed without SerializationException")
         println("Verified StreamPlay load: name=${loaded.name}, url=${loaded.url}")
 
+        val linkData = when (loaded) {
+            is com.lagradost.cloudstream3.MovieLoadResponse -> loaded.dataUrl
+            is com.lagradost.cloudstream3.TvSeriesLoadResponse -> loaded.episodes.firstOrNull()?.data
+            else -> null
+        }
+        println("Testing StreamPlay.loadLinks with data: $linkData")
+        if (linkData != null) {
+            val links = com.telestream.providers.ProviderManager.loadLinks("StreamPlay", linkData)
+            println("StreamPlay loadLinks executed! Found ${links.size} links")
+        }
+
         val spPopular = com.telestream.providers.ProviderManager.getPopular("StreamPlay")
         assertTrue(spPopular.isNotEmpty(), "StreamPlay getPopular should return results")
         println("Verified StreamPlay getPopular: found ${spPopular.size} items")
@@ -118,6 +129,23 @@ class CloudStreamPluginLoaderTest {
         val ssSearch = com.telestream.providers.ProviderManager.searchInProvider("SuperStream", "batman")
         assertTrue(ssSearch.isNotEmpty(), "SuperStream search should return results")
         println("Verified SuperStream search: found ${ssSearch.size} items for 'batman'")
+
+        val firstSs = ssSearch.first()
+        println("Testing SuperStream.load with url: ${firstSs.url}")
+        val ssLoaded = com.telestream.providers.ProviderManager.load("SuperStream", firstSs.url)
+        assertNotNull(ssLoaded, "SuperStream.load should succeed")
+        println("Verified SuperStream load: name=${ssLoaded.name}")
+
+        val ssLinkData = when (ssLoaded) {
+            is com.lagradost.cloudstream3.MovieLoadResponse -> ssLoaded.dataUrl
+            is com.lagradost.cloudstream3.TvSeriesLoadResponse -> ssLoaded.episodes.firstOrNull()?.data
+            else -> null
+        }
+        println("Testing SuperStream.loadLinks with data: $ssLinkData")
+        if (ssLinkData != null) {
+            val links = com.telestream.providers.ProviderManager.loadLinks("SuperStream", ssLinkData)
+            println("SuperStream loadLinks executed! Found ${links.size} links")
+        }
 
         val ssPopular = com.telestream.providers.ProviderManager.getPopular("SuperStream")
         assertTrue(ssPopular.isNotEmpty(), "SuperStream getPopular should return results")

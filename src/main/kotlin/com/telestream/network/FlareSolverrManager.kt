@@ -37,6 +37,59 @@ object FlareSolverrManager {
         }
     }
 
+    data class Solution(
+        val cookies: Map<String, String>,
+        val userAgent: String?,
+        val responseHtml: String?
+    )
+
+    @JvmStatic
+    fun solveOnDemand(url: String): Solution? {
+        val running = runBlocking { ensureRunning() }
+        if (!running) return null
+
+        return try {
+            val endpoint = URI(defaultUrl).toURL()
+            val conn = endpoint.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.connectTimeout = 10000
+            conn.readTimeout = 60000
+            conn.setRequestProperty("Content-Type", "application/json")
+
+            val payload = """{"cmd":"request.get","url":"$url","maxTimeout":60000}"""
+            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+
+            if (conn.responseCode == 200) {
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val root = com.lagradost.cloudstream3.mapper.readTree(jsonStr)
+                val status = root.get("status")?.asText()
+                if (status == "ok") {
+                    val solution = root.get("solution")
+                    val cookiesList = solution?.get("cookies")
+                    val cookieMap = mutableMapOf<String, String>()
+                    if (cookiesList != null && cookiesList.isArray) {
+                        for (c in cookiesList) {
+                            val name = c.get("name")?.asText()
+                            val value = c.get("value")?.asText()
+                            if (name != null && value != null) {
+                                cookieMap[name] = value
+                            }
+                        }
+                    }
+                    val ua = solution?.get("userAgent")?.asText()
+                    val html = solution?.get("response")?.asText()
+                    logger.info("✅ FlareSolverr solved challenge on demand for: $url (found ${cookieMap.size} cookies)")
+                    return Solution(cookieMap, ua, html)
+                }
+            }
+            null
+        } catch (e: Exception) {
+            logger.warn("FlareSolverr solve on demand failed: ${e.message}")
+            null
+        }
+    }
+
     fun startAsync(scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())) {
         scope.launch {
             try {

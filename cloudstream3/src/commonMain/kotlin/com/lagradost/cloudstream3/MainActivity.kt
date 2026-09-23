@@ -127,7 +127,7 @@ var app = Requests(
     baseClient = buildResilientClient(
         proxy = parseProxy(System.getenv("SCRAPER_PROXY") ?: System.getenv("ALL_PROXY") ?: System.getenv("HTTP_PROXY")),
         useDoh = System.getenv("ENABLE_DOH") != "false",
-        verifySsl = true
+        verifySsl = System.getenv("VERIFY_SSL") == "true"
     ),
     responseParser = jsonResponseParser
 ).apply {
@@ -153,9 +153,10 @@ class MainActivity {
         val afterPluginsLoadedEvent = Event<Boolean>()
         var lastError: String? = null
 
-        fun initNetwork(proxyUrl: String? = null, useDoh: Boolean = true) {
+        fun initNetwork(proxyUrl: String? = null, useDoh: Boolean = true, verifySsl: Boolean = false) {
             val p = parseProxy(proxyUrl ?: System.getenv("SCRAPER_PROXY") ?: System.getenv("ALL_PROXY") ?: System.getenv("HTTP_PROXY"))
-            app.baseClient = buildResilientClient(proxy = p, useDoh = useDoh, verifySsl = true)
+            val sslVerify = (System.getenv("VERIFY_SSL") == "true") || verifySsl
+            app.baseClient = buildResilientClient(proxy = p, useDoh = useDoh, verifySsl = sslVerify)
             insecureApp.baseClient = buildResilientClient(proxy = p, useDoh = useDoh, verifySsl = false)
         }
     }

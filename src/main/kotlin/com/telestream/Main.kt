@@ -328,9 +328,6 @@ fun main(): Unit {
             }
         }
 
-        // Automatically check and launch FlareSolverr in the background if not present
-        com.telestream.network.FlareSolverrManager.startAsync(this)
-
         launch {
             runner.startPolling()
         }
