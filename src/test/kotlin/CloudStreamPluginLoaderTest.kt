@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class CloudStreamPluginLoaderTest {
 
@@ -62,7 +63,7 @@ class CloudStreamPluginLoaderTest {
     }
 
     @Test
-    fun testLoadXDMoviesPlugin() {
+    fun testLoadXDMoviesPlugin() = kotlinx.coroutines.runBlocking {
         val xdMoviesCs3 = File("data/plugins_cache/XDMovies.cs3")
         if (xdMoviesCs3.exists()) {
             val metadata = PluginMetadata(
@@ -74,6 +75,15 @@ class CloudStreamPluginLoaderTest {
             val provider = CloudStreamPluginLoader.loadPlugin(metadata)
             assertNotNull(provider, "XDMovies should load successfully without NoSuchMethodError: base64Decode")
             println("Successfully loaded XDMovies provider: ${provider.name} (${provider.mainUrl})")
+
+            try {
+                val results = com.telestream.providers.ProviderManager.searchInProvider("XD Movies", "batman")
+                println("XDMovies search executed, found: ${results.size} items")
+            } catch (e: Throwable) {
+                val stack = e.stackTraceToString()
+                println("XDMovies search executed with: ${e.javaClass.simpleName}: ${e.message}")
+                assertFalse(stack.contains("DataStore"), "Should not throw NoClassDefFoundError for DataStore")
+            }
         }
     }
     @Test

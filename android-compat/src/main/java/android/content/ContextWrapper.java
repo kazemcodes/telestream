@@ -5,6 +5,7 @@ import java.io.File;
 public class ContextWrapper extends Context {
     private Context mBase;
     public ContextWrapper(Context base) { mBase = base; }
+    public Context getBaseContext() { return mBase; }
     protected void attachBaseContext(Context base) { mBase = base; }
 
     @Override public SharedPreferences getSharedPreferences(String name, int mode) {
