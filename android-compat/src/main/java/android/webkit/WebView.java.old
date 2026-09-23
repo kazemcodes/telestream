@@ -198,10 +198,13 @@ public class WebView extends AbsoluteLayout
             throw new IllegalArgumentException("Invalid context argument");
         }
         if (mWebViewThread == null) {
-            throw new RuntimeException(
-                "WebView cannot be initialized on a thread that has no Looper.");
+            if (Looper.myLooper() == null) {
+                try {
+                    Looper.prepare();
+                } catch (Throwable ignored) {}
+            }
         }
-        sEnforceThreadChecking = true;
+        sEnforceThreadChecking = false;
         checkThread();
 
         ensureProviderCreated();
@@ -945,20 +948,19 @@ public class WebView extends AbsoluteLayout
     private void ensureProviderCreated() {
         checkThread();
         if (mProvider == null) {
-            if (mProviderFactory == null)
-                throw new IllegalStateException("No factory registered");
-            // As this can get called during the base class constructor chain, pass the minimum
-            // number of dependencies here; the rest are deferred to init().
-            mProvider = mProviderFactory.call(this);
+            if (mProviderFactory == null) {
+                mProvider = new xyz.nulldev.androidcompat.webkit.HeadlessWebViewProvider(this);
+            } else {
+                mProvider = mProviderFactory.call(this);
+            }
         }
     }
 
     private final Looper mWebViewThread = Looper.myLooper();
 
     private void checkThread() {
-        // Ignore mWebViewThread == null because this can be called during in the super class
-        // constructor, before this class's own constructor has even started.
-        if (mWebViewThread != null && Looper.myLooper() != mWebViewThread) {
+        // Safe check for pure JVM / coroutine thread execution
+        if (sEnforceThreadChecking && mWebViewThread != null && Looper.myLooper() != mWebViewThread) {
             Throwable throwable = new Throwable(
                     "A WebView method was called on thread '" +
                     Thread.currentThread().getName() + "'. " +
@@ -966,10 +968,6 @@ public class WebView extends AbsoluteLayout
                     "(Expected Looper " + mWebViewThread + " called on " + Looper.myLooper() +
                     ", FYI main Looper is " + Looper.getMainLooper() + ")");
             Log.w(LOGTAG, Log.getStackTraceString(throwable));
-
-            if (sEnforceThreadChecking) {
-                throw new RuntimeException(throwable);
-            }
         }
     }
 

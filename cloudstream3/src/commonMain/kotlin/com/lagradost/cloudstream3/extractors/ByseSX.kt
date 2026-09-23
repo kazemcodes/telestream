@@ -118,7 +118,8 @@ open class ByseSX : ExtractorApi() {
     ) {
         val refererUrl = getBaseUrl(url)
         val playbackRoot = getPlayback(url) ?: return
-        val streamUrl = decryptPlayback(playbackRoot.playback) ?: return
+        val playback = playbackRoot.playback ?: return
+        val streamUrl = decryptPlayback(playback) ?: return
 
         val headers = mapOf("Referer" to refererUrl)
         M3u8Helper.generateM3u8(
@@ -144,7 +145,7 @@ data class DetailsRoot(
 
 @Serializable
 data class PlaybackRoot(
-    @JsonProperty("playback") @SerialName("playback") val playback: Playback,
+    @JsonProperty("playback") @SerialName("playback") val playback: Playback? = null,
 )
 
 @Serializable

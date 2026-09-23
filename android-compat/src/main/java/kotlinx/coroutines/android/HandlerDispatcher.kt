@@ -56,16 +56,23 @@ public sealed class HandlerDispatcher :
 }
 
 @OptIn(InternalCoroutinesApi::class)
-internal class AndroidDispatcherFactory : MainDispatcherFactory {
+public class AndroidDispatcherFactory : MainDispatcherFactory {
     override fun createDispatcher(allFactories: List<MainDispatcherFactory>): MainCoroutineDispatcher {
-        val mainLooper = Looper.getMainLooper() ?: throw IllegalStateException("The main looper is not available")
-        return HandlerContext(mainLooper.asHandler())
+        val looper = Looper.getMainLooper()
+        return HandlerContext(looper.asHandler())
     }
 
-    override fun hintOnError(): String = "For tests Dispatchers.setMain from kotlinx-coroutines-test module can be used"
+    override fun hintOnError(): String = "TeleStream Android Compat Main Dispatcher"
 
     override val loadPriority: Int
         get() = Int.MAX_VALUE / 2
+}
+
+internal object JvmFallbackMainDispatcher : MainCoroutineDispatcher() {
+    override val immediate: MainCoroutineDispatcher get() = this
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        Dispatchers.Default.dispatch(context, block)
+    }
 }
 
 /**

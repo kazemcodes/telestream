@@ -4,7 +4,7 @@ import android.webkit.WebView
 import xyz.nulldev.androidcompat.config.ApplicationInfoConfigModule
 import xyz.nulldev.androidcompat.config.FilesConfigModule
 import xyz.nulldev.androidcompat.config.SystemConfigModule
-import xyz.nulldev.androidcompat.webkit.KcefWebViewProvider
+import xyz.nulldev.androidcompat.webkit.HeadlessWebViewProvider
 import xyz.nulldev.ts.config.GlobalConfigManager
 
 /**
@@ -19,7 +19,7 @@ class AndroidCompatInitializer {
             SystemConfigModule.register(GlobalConfigManager.config),
         )
 
-        WebView.setProviderFactory({ view: WebView -> KcefWebViewProvider(view) })
+        WebView.setProviderFactory({ view: WebView -> HeadlessWebViewProvider(view) })
 
         // Set some properties extensions use
         System.setProperty(

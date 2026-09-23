@@ -45,6 +45,8 @@ sourceSets {
             include("android/annotation/*.java")
             include("android/util/Log.java")
             include("android/util/Base64.java")
+            include("android/util/AttributeSet.java")
+            include("android/graphics/Bitmap.java")
             include("androidx/preference/*.java")
         }
     }
@@ -90,6 +92,9 @@ dependencies {
 
     // Jsoup (for HTML parsing in extensions)
     implementation("org.jsoup:jsoup:1.22.1")
+
+    // OkHttp (for headless WebView network requests)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Koin (DI framework)
     implementation("io.insert-koin:koin-core:4.0.0")

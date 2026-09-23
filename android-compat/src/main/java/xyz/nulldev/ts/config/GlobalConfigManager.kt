@@ -7,7 +7,18 @@ object GlobalConfigManager : ConfigManager {
     private val modules = mutableMapOf<Class<*>, Any>()
 
     override val config: Config
-        get() = try { ConfigFactory.load() } catch (e: Exception) { ConfigFactory.empty() }
+        get() = try {
+            ConfigFactory.load(
+                ConfigFactory.parseResources("compat-reference.conf")
+                    .withFallback(ConfigFactory.load())
+            ).resolve()
+        } catch (e: Exception) {
+            try {
+                ConfigFactory.parseResources("compat-reference.conf").resolve()
+            } catch (ignored: Exception) {
+                ConfigFactory.empty()
+            }
+        }
 
     fun registerModules(vararg configs: ConfigModule) {
         configs.forEach { modules[it::class.java] = it }

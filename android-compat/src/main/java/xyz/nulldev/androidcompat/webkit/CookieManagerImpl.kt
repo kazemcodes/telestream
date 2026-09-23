@@ -9,7 +9,13 @@ import java.net.URI
 
 @Suppress("DEPRECATION")
 class CookieManagerImpl : CookieManager() {
-    private val cookieHandler = CookieHandler.getDefault() as java.net.CookieManager
+    private val cookieHandler: java.net.CookieManager by lazy {
+        (CookieHandler.getDefault() as? java.net.CookieManager) ?: run {
+            val cm = java.net.CookieManager(null, java.net.CookiePolicy.ACCEPT_ALL)
+            try { CookieHandler.setDefault(cm) } catch (_: Throwable) {}
+            cm
+        }
+    }
     private var acceptCookie = true
     private var acceptThirdPartyCookies = true
     private var allowFileSchemeCookies = false

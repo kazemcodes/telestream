@@ -397,7 +397,7 @@ public final class Bitmap {
     }
 
     public void eraseColor(int c) {
-        java.awt.Color color = Color.valueOf(c).toJavaColor();
+        java.awt.Color color = new java.awt.Color(c, true);
         Graphics2D graphics = image.createGraphics();
         graphics.setColor(color);
         graphics.fillRect(0, 0, width, height);
