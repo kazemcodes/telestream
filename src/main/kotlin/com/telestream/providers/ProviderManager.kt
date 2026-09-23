@@ -25,6 +25,13 @@ val SearchResponse.year: Int?
         else -> null
     }
 
+sealed class ProviderError(val message: String, val isNetworkOrBlocked: Boolean) {
+    class NetworkTimeout(msg: String = "Timeout") : ProviderError(msg, true)
+    class DnsOrHostUnreachable(msg: String = "Host unreachable or DNS failed") : ProviderError(msg, true)
+    class CloudflareOrHttpError(val code: Int, msg: String = "HTTP $code") : ProviderError(msg, true)
+    class GeneralError(msg: String) : ProviderError(msg, false)
+}
+
 object ProviderManager {
     private val customProviders = java.util.concurrent.CopyOnWriteArrayList<MainAPI>()
 
@@ -45,6 +52,29 @@ object ProviderManager {
     private val loadCache = ConcurrentHashMap<String, LoadResponse>()
     private val popularCache = ConcurrentHashMap<String, List<SearchResponse>>()
     private val latestCache = ConcurrentHashMap<String, List<SearchResponse>>()
+    private val lastErrors = ConcurrentHashMap<String, ProviderError>()
+
+    fun getLastError(providerName: String): ProviderError? = lastErrors[providerName.lowercase()]
+    fun clearLastError(providerName: String) { lastErrors.remove(providerName.lowercase()) }
+
+    private fun classifyError(e: Throwable): ProviderError {
+        val cause = generateSequence(e) { it.cause }.lastOrNull() ?: e
+        val msg = cause.message ?: e.message ?: ""
+        return when {
+            cause is java.net.UnknownHostException ->
+                ProviderError.DnsOrHostUnreachable("سایت سورس در دسترس نیست یا دامنه توسط DNS مسدود شده است")
+            cause is java.net.SocketTimeoutException || cause is java.util.concurrent.TimeoutException ->
+                ProviderError.NetworkTimeout("پاسخ سرور سورس با وقفه زمانی (Timeout) مواجه شد")
+            cause is java.net.ConnectException || cause is javax.net.ssl.SSLException ->
+                ProviderError.DnsOrHostUnreachable("اتصال به سرور سورس برقرار نشد (فیلترینگ یا قطعی سرور)")
+            msg.contains("403") ->
+                ProviderError.CloudflareOrHttpError(403, "سایت سورس مسدود یا تحت محافظت کلودفلر است (HTTP 403)")
+            msg.contains("502") || msg.contains("503") || msg.contains("504") ->
+                ProviderError.CloudflareOrHttpError(502, "سرور سورس موقتاً در دسترس نیست (HTTP 50x)")
+            else ->
+                ProviderError.GeneralError(msg.ifBlank { "خطای دریافت اطلاعات از سورس" })
+        }
+    }
 
     init {
     }
@@ -127,9 +157,14 @@ object ProviderManager {
         val cacheKey = "${provider.name.lowercase()}:${trimmedQuery.lowercase()}:nsfw=$nsfwAllowed"
         searchCache[cacheKey]?.let { return it }
 
+        clearLastError(provider.name)
         val results = try {
             (provider.search(trimmedQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            val err = classifyError(e)
+            lastErrors[provider.name.lowercase()] = err
+            org.slf4j.LoggerFactory.getLogger("ProviderManager")
+                .warn("Search in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             emptyList()
         }
 
@@ -143,6 +178,7 @@ object ProviderManager {
         val cacheKey = "${provider.name.lowercase()}:page=$page:nsfw=$nsfwAllowed"
         popularCache[cacheKey]?.let { return it }
 
+        clearLastError(provider.name)
         val results = try {
             val section = provider.mainPage.firstOrNull {
                 it.name.contains("popular", ignoreCase = true) ||
@@ -158,7 +194,11 @@ object ProviderManager {
                 emptyList()
             }
             list.filter { it.type != TvType.NSFW || nsfwAllowed }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            val err = classifyError(e)
+            lastErrors[provider.name.lowercase()] = err
+            org.slf4j.LoggerFactory.getLogger("ProviderManager")
+                .warn("getPopular in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             emptyList()
         }
         if (results.isNotEmpty()) {
@@ -173,6 +213,7 @@ object ProviderManager {
         val cacheKey = "${provider.name.lowercase()}:page=$page:nsfw=$nsfwAllowed"
         latestCache[cacheKey]?.let { return it }
 
+        clearLastError(provider.name)
         val results = try {
             val section = provider.mainPage.firstOrNull {
                 it.name.contains("latest", ignoreCase = true) ||
@@ -188,7 +229,11 @@ object ProviderManager {
                 emptyList()
             }
             list.filter { it.type != TvType.NSFW || nsfwAllowed }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            val err = classifyError(e)
+            lastErrors[provider.name.lowercase()] = err
+            org.slf4j.LoggerFactory.getLogger("ProviderManager")
+                .warn("getLatest in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             emptyList()
         }
         if (results.isNotEmpty()) {
@@ -207,9 +252,14 @@ object ProviderManager {
         val cacheKey = "$providerName:$url"
         loadCache[cacheKey]?.let { return it }
 
+        clearLastError(provider.name)
         val response = try {
             provider.load(url)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            val err = classifyError(e)
+            lastErrors[provider.name.lowercase()] = err
+            org.slf4j.LoggerFactory.getLogger("ProviderManager")
+                .warn("load in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
             null
         }
 
@@ -222,13 +272,29 @@ object ProviderManager {
     suspend fun loadLinks(providerName: String, data: String): List<ExtractorLink> {
         val provider = getProvider(providerName) ?: return emptyList()
         val links = mutableListOf<ExtractorLink>()
+        clearLastError(provider.name)
         try {
             provider.loadLinks(data, isCasting = false, subtitleCallback = {}) { link ->
                 links.add(link)
             }
-        } catch (e: Exception) {
-            // Log or ignore
+        } catch (e: Throwable) {
+            val err = classifyError(e)
+            lastErrors[provider.name.lowercase()] = err
+            org.slf4j.LoggerFactory.getLogger("ProviderManager")
+                .warn("loadLinks in provider '${provider.name}' failed: ${e.javaClass.simpleName} - ${e.message}")
         }
         return links
+    }
+
+    suspend fun pingProvider(providerName: String): Pair<Boolean, Long> {
+        val provider = getProvider(providerName) ?: return Pair(false, -1)
+        val startTime = System.currentTimeMillis()
+        return try {
+            val resp = app.get(provider.mainUrl, timeout = 6L)
+            val elapsed = System.currentTimeMillis() - startTime
+            Pair(resp.isSuccessful, elapsed)
+        } catch (_: Exception) {
+            Pair(false, -1)
+        }
     }
 }

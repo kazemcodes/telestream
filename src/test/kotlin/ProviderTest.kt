@@ -206,4 +206,27 @@ class ProviderTest {
 
         ProviderManager.remove(p)
     }
+
+    @Test
+    fun testProviderErrorTrackingAndClassification() {
+        val failingProvider = object : com.lagradost.cloudstream3.MainAPI() {
+            override var name = "FailingProvider"
+            override var mainUrl = "https://failing.example.com"
+            override suspend fun search(query: String): List<com.lagradost.cloudstream3.SearchResponse> {
+                throw java.net.UnknownHostException("failing.example.com")
+            }
+        }
+        ProviderManager.register(failingProvider)
+
+        kotlinx.coroutines.runBlocking {
+            val results = ProviderManager.searchInProvider("FailingProvider", "avatar")
+            assertTrue(results.isEmpty())
+            val err = ProviderManager.getLastError("FailingProvider")
+            assertNotNull(err)
+            assertTrue(err is com.telestream.providers.ProviderError.DnsOrHostUnreachable)
+            assertTrue(err.isNetworkOrBlocked)
+        }
+
+        ProviderManager.remove(failingProvider)
+    }
 }

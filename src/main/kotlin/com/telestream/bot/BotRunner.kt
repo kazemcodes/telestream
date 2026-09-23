@@ -167,6 +167,11 @@ class BotRunner(private val bot: TelegramClient) {
         )
         rows.add(
             listOf(
+                InlineKeyboardButton(text = t("btn_check_sources", lang), callbackData = "menu:check_sources")
+            )
+        )
+        rows.add(
+            listOf(
                 InlineKeyboardButton(text = t("btn_donate", lang), callbackData = "menu:donate"),
                 InlineKeyboardButton(text = t("btn_lang", lang), callbackData = "menu:lang")
             )
@@ -189,6 +194,34 @@ class BotRunner(private val bot: TelegramClient) {
 
             text.startsWith("/ping") -> {
                 bot.sendMessage(chatId, "🏓 *Pong!* TeleStream bot is online.")
+            }
+
+            text.startsWith("/check_sources") || text.startsWith("/ping_sources") -> {
+                val checkingMsg = if (lang == "fa") "⏳ در حال بررسی وضعیت اتصال به سورس‌ها..." else "⏳ Checking sources connectivity..."
+                bot.sendMessage(chatId, checkingMsg)
+                val enabled = Database.getEnabledSources(userId)
+                val testList = if (enabled.isNotEmpty()) {
+                    enabled.mapNotNull { ProviderManager.getProvider(it) }
+                } else {
+                    ProviderManager.providers.take(6)
+                }
+                val sb = StringBuilder(t("sources_health_title", lang))
+                for (p in testList) {
+                    val (ok, ms) = ProviderManager.pingProvider(p.name)
+                    if (ok) {
+                        sb.append(t("sources_health_ok", lang, p.name, ms)).append("\n")
+                    } else {
+                        val err = ProviderManager.getLastError(p.name)?.message ?: "Timeout / DNS Blocked"
+                        sb.append(t("sources_health_fail", lang, p.name, err)).append("\n")
+                    }
+                }
+                sb.append("\n💡 ")
+                if (lang == "fa") {
+                    sb.append("سورس‌های با نشان 🟢 بدون مشکل در دسترس هستند. در صورت قرمز بودن 🔴، ممکن است سرور سورس موقتاً قطع باشد یا توسط اینترنت مسدود شده باشد.")
+                } else {
+                    sb.append("Sources with 🟢 are accessible. If marked with 🔴, the server is down or blocked by ISP/DNS.")
+                }
+                bot.sendMessage(chatId, sb.toString())
             }
 
             text.startsWith("/popular") -> {
@@ -463,6 +496,13 @@ class BotRunner(private val bot: TelegramClient) {
         val queryToken = CallbackTokenCache.put(query)
 
         if (results.isEmpty()) {
+            val err = ProviderManager.getLastError(sourceName)
+            val msgText = if (err != null && err.isNetworkOrBlocked) {
+                t("search_error_source", lang, sourceName, err.message)
+            } else {
+                t("no_results_in_source", lang, sourceName, query)
+            }
+            val retryToken = CallbackTokenCache.put(Pair(sourceName, query))
             val keyboard = InlineKeyboardMarkup(
                 listOf(
                     listOf(
@@ -472,11 +512,15 @@ class BotRunner(private val bot: TelegramClient) {
                         )
                     ),
                     listOf(
+                        InlineKeyboardButton(
+                            text = t("btn_retry", lang),
+                            callbackData = "src_retry:$retryToken"
+                        ),
                         InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                     )
                 )
             )
-            bot.sendMessage(chatId, t("no_results_in_source", lang, sourceName, query), replyMarkup = keyboard)
+            bot.sendMessage(chatId, msgText, replyMarkup = keyboard)
             return
         }
 
@@ -602,7 +646,13 @@ class BotRunner(private val bot: TelegramClient) {
         val rows = mutableListOf<List<InlineKeyboardButton>>()
 
         if (items.isEmpty()) {
-            val emptyText = "$headerText\n\n${t("feed_no_items", lang)}"
+            val err = ProviderManager.getLastError(activeSource)
+            val emptyText = if (err != null && err.isNetworkOrBlocked) {
+                t("source_unreachable", lang, activeSource, err.message)
+            } else {
+                "$headerText\n\n${t("feed_no_items", lang)}"
+            }
+            val retryToken = CallbackTokenCache.put(activeSource)
             rows.add(
                 listOf(
                     InlineKeyboardButton(
@@ -617,7 +667,12 @@ class BotRunner(private val bot: TelegramClient) {
             )
             rows.add(
                 listOf(
-                    InlineKeyboardButton(text = t("btn_switch_source", lang), callbackData = "feed_picksrc:$feedType"),
+                    InlineKeyboardButton(text = t("btn_retry", lang), callbackData = "feed_retry:$feedType:$page:$retryToken"),
+                    InlineKeyboardButton(text = t("btn_switch_source", lang), callbackData = "feed_picksrc:$feedType")
+                )
+            )
+            rows.add(
+                listOf(
                     InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                 )
             )
@@ -993,6 +1048,35 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.answerCallbackQuery(callback.id)
             }
 
+            data == "menu:check_sources" -> {
+                bot.answerCallbackQuery(callback.id)
+                val checkingMsg = if (lang == "fa") "⏳ در حال بررسی وضعیت اتصال به سورس‌ها..." else "⏳ Checking sources connectivity..."
+                bot.sendMessage(chatId, checkingMsg)
+                val enabled = Database.getEnabledSources(userId)
+                val testList = if (enabled.isNotEmpty()) {
+                    enabled.mapNotNull { ProviderManager.getProvider(it) }
+                } else {
+                    ProviderManager.providers.take(6)
+                }
+                val sb = StringBuilder(t("sources_health_title", lang))
+                for (p in testList) {
+                    val (ok, ms) = ProviderManager.pingProvider(p.name)
+                    if (ok) {
+                        sb.append(t("sources_health_ok", lang, p.name, ms)).append("\n")
+                    } else {
+                        val err = ProviderManager.getLastError(p.name)?.message ?: "Timeout / DNS Blocked"
+                        sb.append(t("sources_health_fail", lang, p.name, err)).append("\n")
+                    }
+                }
+                sb.append("\n💡 ")
+                if (lang == "fa") {
+                    sb.append("سورس‌های با نشان 🟢 بدون مشکل در دسترس هستند. در صورت قرمز بودن 🔴، ممکن است سرور سورس موقتاً قطع باشد یا توسط اینترنت مسدود شده باشد.")
+                } else {
+                    sb.append("Sources with 🟢 are accessible. If marked with 🔴, the server is down or blocked by ISP/DNS.")
+                }
+                bot.sendMessage(chatId, sb.toString())
+            }
+
             data == "feed:popular" -> {
                 showFeedScreen(chatId, userId, lang, "popular", messageId = messageId)
                 bot.answerCallbackQuery(callback.id)
@@ -1016,6 +1100,26 @@ class BotRunner(private val bot: TelegramClient) {
                 val sourceName = CallbackTokenCache.get<String>(token) ?: Database.getUserSource(userId)
                 Database.setUserSource(userId, sourceName)
                 showFeedScreen(chatId, userId, lang, feedType, sourceName = sourceName, messageId = messageId)
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data.startsWith("feed_retry:") -> {
+                val parts = data.removePrefix("feed_retry:").split(":")
+                val feedType = parts.getOrNull(0) ?: "popular"
+                val page = parts.getOrNull(1)?.toIntOrNull() ?: 1
+                val token = parts.getOrNull(2) ?: ""
+                val sourceName = CallbackTokenCache.get<String>(token) ?: Database.getUserSource(userId)
+                showFeedScreen(chatId, userId, lang, feedType, page = page, sourceName = sourceName, messageId = messageId)
+                bot.answerCallbackQuery(callback.id, t("btn_retry", lang))
+            }
+
+            data.startsWith("src_retry:") -> {
+                val token = data.removePrefix("src_retry:")
+                val pair = CallbackTokenCache.get<Pair<String, String>>(token)
+                if (pair != null) {
+                    val (sourceName, query) = pair
+                    executeSearch(chatId, userId, lang, sourceName, query)
+                }
                 bot.answerCallbackQuery(callback.id)
             }
 

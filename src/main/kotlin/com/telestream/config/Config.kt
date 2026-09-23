@@ -44,6 +44,8 @@ object Config {
     // Telegram API Endpoint & Proxy
     val telegramApiUrl: String = get("TELEGRAM_API_URL") ?: "https://api.telegram.org"
     val telegramProxy: String? = get("TELEGRAM_PROXY") ?: get("HTTPS_PROXY") ?: get("HTTP_PROXY")
+    val scraperProxy: String? = get("SCRAPER_PROXY") ?: get("ALL_PROXY") ?: get("HTTPS_PROXY") ?: get("HTTP_PROXY")
+    val dnsOverHttps: Boolean = get("ENABLE_DOH")?.toBooleanStrictOrNull() ?: true
 
     // Public WebApp URL (supports Hugging Face SPACE_HOST or custom domain)
     val webAppUrl: String = get("WEBAPP_URL")

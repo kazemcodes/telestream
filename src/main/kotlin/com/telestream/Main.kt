@@ -28,9 +28,16 @@ fun main(): Unit = runBlocking {
     val port = Config.port
     val webAppUrl = Config.webAppUrl
 
+    // Initialize networking with DoH (DNS over HTTPS) and optional scraper proxy
+    com.lagradost.cloudstream3.MainActivity.initNetwork(Config.scraperProxy, Config.dnsOverHttps)
+
     logger.info("=====================================================")
     logger.info("🎬 Starting TeleStream Telegram Bot (Pure Kotlin JVM)")
     logger.info("👉 Active Providers: ${ProviderManager.providers.joinToString { it.name }}")
+    logger.info("👉 DNS over HTTPS: ${if (Config.dnsOverHttps) "Enabled (Cloudflare/Google)" else "Disabled"}")
+    if (Config.scraperProxy != null) {
+        logger.info("👉 Scraper Proxy: ${Config.scraperProxy}")
+    }
     logger.info("👉 Web Health Server: http://0.0.0.0:$port/health")
     logger.info("👉 Mini App WebUI: $webAppUrl")
     logger.info("=====================================================")
@@ -178,6 +185,7 @@ fun main(): Unit = runBlocking {
                     BotCommand("manage_sources", "⚙️ Manage / Toggle Sources"),
                     BotCommand("bookmarks", "⭐ Saved Bookmarks"),
                     BotCommand("language", "🌐 Change Language / تغییر زبان"),
+                    BotCommand("check_sources", "🩺 Check Sources Health & Status"),
                     BotCommand("ping", "🏓 Check Bot Status")
                 )
                 client.setMyCommands(defaultCommands)
@@ -192,6 +200,7 @@ fun main(): Unit = runBlocking {
                     BotCommand("manage_sources", "⚙️ مدیریت و فعال‌سازی سورس‌ها"),
                     BotCommand("bookmarks", "⭐ فیلم‌ها و سریال‌های نشان‌شده"),
                     BotCommand("language", "🌐 تغییر زبان / Change Language"),
+                    BotCommand("check_sources", "🩺 تست سلامت و اتصال سورس‌ها"),
                     BotCommand("ping", "🏓 وضعیت آنلاین ربات")
                 )
                 client.setMyCommands(faCommands, languageCode = "fa")
