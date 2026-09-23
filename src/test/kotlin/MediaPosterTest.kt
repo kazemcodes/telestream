@@ -56,16 +56,41 @@ class MediaPosterTest {
     }
 
     @Test
-    fun testPageUrlResolution() {
-        val detailsUrl = "https://provider.site/movie/123"
-        val refUrl = "https://provider.site/movie/123"
+    fun testFastJumpMath() {
+        val total = 25
+        var current = 2
+        // Jump -5 from 2: ((2 - 5) % 25 + 25) % 25 = 22
+        val jumpMinus5 = ((current - 5) % total + total) % total
+        assertEquals(22, jumpMinus5)
 
-        val pageUrl = detailsUrl.takeIf { it.startsWith("http") } ?: refUrl.takeIf { it.startsWith("http") }
-        assertEquals("https://provider.site/movie/123", pageUrl)
+        // Jump +5 from 2: (2 + 5) % 25 = 7
+        val jumpPlus5 = (current + 5) % total
+        assertEquals(7, jumpPlus5)
 
-        // If detailsUrl is empty or blank
-        val emptyDetails = ""
-        val fallbackUrl = emptyDetails.takeIf { it.startsWith("http") } ?: refUrl.takeIf { it.startsWith("http") }
-        assertEquals("https://provider.site/movie/123", fallbackUrl)
+        // Jump +5 from 23: (23 + 5) % 25 = 3
+        current = 23
+        val jumpPlus5FromEnd = (current + 5) % total
+        assertEquals(3, jumpPlus5FromEnd)
+    }
+
+    @Test
+    fun testPagePartitioningMath() {
+        val totalItems = 25
+        val pageSize = 8
+        val totalPages = (totalItems + pageSize - 1) / pageSize
+        assertEquals(4, totalPages)
+
+        // Page for item 0
+        var pageIndex = (0 / pageSize).coerceIn(0, totalPages - 1)
+        assertEquals(0, pageIndex)
+
+        // Page for item 15
+        pageIndex = (15 / pageSize).coerceIn(0, totalPages - 1)
+        assertEquals(1, pageIndex)
+
+        // Page for item 24
+        pageIndex = (24 / pageSize).coerceIn(0, totalPages - 1)
+        assertEquals(3, pageIndex)
     }
 }
+

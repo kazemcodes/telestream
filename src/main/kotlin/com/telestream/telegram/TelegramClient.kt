@@ -187,7 +187,13 @@ class TelegramClient(private val botToken: String) {
                 contentType(ContentType.Application.Json)
                 setBody(payload.toString())
             }
-            res.status.isSuccess()
+            if (!res.status.isSuccess()) {
+                val err = res.bodyAsText()
+                logger.error("Error sending media group: $err")
+                false
+            } else {
+                true
+            }
         } catch (e: Exception) {
             logger.error("Error sending media group: ${e.message}")
             false
