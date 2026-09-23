@@ -39,6 +39,12 @@ object CallbackTokenCache {
     fun <T> get(token: String): T? = cache[token] as? T
 }
 
+fun sanitizeTelegramUrl(rawUrl: String?): String? {
+    if (rawUrl.isNullOrBlank()) return null
+    val trimmed = rawUrl.trim()
+    return trimmed.replace(" ", "%20")
+}
+
 data class MediaRef(val provider: String, val url: String)
 data class EpisodeRef(
     val provider: String,
@@ -632,7 +638,7 @@ class BotRunner(private val bot: TelegramClient) {
             val isCurrent = idx == currentIndex
             val marker = if (isCurrent) "🔘 " else "${idx + 1}. "
             val yearStr = item.year?.let { " ($it)" } ?: ""
-            val token = CallbackTokenCache.put(MediaRef(item.apiName, item.url))
+            val token = CallbackTokenCache.put(MediaRef(item.apiName, sanitizeTelegramUrl(item.url) ?: item.url))
             rows.add(
                 listOf(
                     InlineKeyboardButton(
@@ -712,7 +718,7 @@ class BotRunner(private val bot: TelegramClient) {
         val summaries = results.take(8).map { item ->
             MediaItemSummary(
                 name = item.name,
-                url = item.url,
+                url = sanitizeTelegramUrl(item.url) ?: item.url,
                 apiName = item.apiName,
                 posterUrl = item.posterUrl,
                 type = item.type,
@@ -1016,7 +1022,7 @@ class BotRunner(private val bot: TelegramClient) {
         val summaries = items.take(8).map { item ->
             MediaItemSummary(
                 name = item.name,
-                url = item.url,
+                url = sanitizeTelegramUrl(item.url) ?: item.url,
                 apiName = activeSource,
                 posterUrl = item.posterUrl,
                 type = item.type,
@@ -1632,7 +1638,8 @@ class BotRunner(private val bot: TelegramClient) {
                 }
 
                 // Website URL button
-                val pageUrl = details.url.takeIf { it.startsWith("http") } ?: ref.url.takeIf { it.startsWith("http") }
+                val rawPageUrl = details.url.takeIf { it.startsWith("http") } ?: ref.url.takeIf { it.startsWith("http") }
+                val pageUrl = sanitizeTelegramUrl(rawPageUrl)
                 if (!pageUrl.isNullOrBlank()) {
                     buttons.add(
                         listOf(
@@ -1764,8 +1771,9 @@ class BotRunner(private val bot: TelegramClient) {
 
                 if (links.isEmpty()) {
                     val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
-                    val webUrl = epRef.episodeData.takeIf { it.startsWith("http") }
+                    val rawWebUrl = epRef.episodeData.takeIf { it.startsWith("http") }
                         ?: seriesRef?.url?.takeIf { it.startsWith("http") }
+                    val webUrl = sanitizeTelegramUrl(rawWebUrl)
                     val fallbackButtons = mutableListOf<List<InlineKeyboardButton>>()
                     if (!webUrl.isNullOrBlank()) {
                         fallbackButtons.add(
@@ -1805,12 +1813,13 @@ class BotRunner(private val bot: TelegramClient) {
                     val typeDesc = if (link.isM3u8) "Stream" else "Direct"
                     val qualityDesc = if (link.quality > 0) "${link.quality}p" else "Auto"
                     val label = "$icon [$qualityDesc] ${link.name.take(18)} ($typeDesc)"
+                    val cleanLink = sanitizeTelegramUrl(link.url) ?: link.url
 
                     buttons.add(
                         listOf(
                             InlineKeyboardButton(
                                 text = label,
-                                url = link.url
+                                url = cleanLink
                             )
                         )
                     )
@@ -1818,8 +1827,9 @@ class BotRunner(private val bot: TelegramClient) {
 
                 // Website URL button
                 val seriesRef = CallbackTokenCache.get<MediaRef>(epRef.seriesRefToken)
-                val webUrl = epRef.episodeData.takeIf { it.startsWith("http") }
+                val rawWebUrl = epRef.episodeData.takeIf { it.startsWith("http") }
                     ?: seriesRef?.url?.takeIf { it.startsWith("http") }
+                val webUrl = sanitizeTelegramUrl(rawWebUrl)
                 if (!webUrl.isNullOrBlank()) {
                     buttons.add(
                         listOf(

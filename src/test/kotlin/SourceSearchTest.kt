@@ -142,4 +142,22 @@ class SourceSearchTest {
         println("Aggregated sources count: ${sources.size}")
         assertTrue(sources.isNotEmpty())
     }
+
+    @Test
+    fun testSanitizeTelegramUrl() {
+        val raw1 = "https://kisskh.id/Colony (2026)/12905"
+        val expected1 = "https://kisskh.id/Colony%20(2026)/12905"
+        assertEquals(expected1, com.telestream.bot.sanitizeTelegramUrl(raw1))
+
+        val raw2 = "https://kisskh.id/Colony%20(2026)/12905"
+        assertEquals(raw2, com.telestream.bot.sanitizeTelegramUrl(raw2))
+
+        val raw3 = "https://example.com/movie name with spaces/file.mkv"
+        val expected3 = "https://example.com/movie%20name%20with%20spaces/file.mkv"
+        assertEquals(expected3, com.telestream.bot.sanitizeTelegramUrl(raw3))
+
+        assertEquals(null, com.telestream.bot.sanitizeTelegramUrl(null))
+        assertEquals(null, com.telestream.bot.sanitizeTelegramUrl(""))
+        assertEquals(null, com.telestream.bot.sanitizeTelegramUrl("   "))
+    }
 }
