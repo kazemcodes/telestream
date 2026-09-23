@@ -251,5 +251,40 @@ class TelegramClient(private val botToken: String) {
             false
         }
     }
+
+    suspend fun getMe(): User? {
+        return try {
+            val res = client.get("$baseUrl/getMe")
+            val tgResp: TelegramResponse<User> = res.body()
+            tgResp.result
+        } catch (e: Exception) {
+            logger.warn("Failed to getMe: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun answerInlineQuery(
+        inlineQueryId: String,
+        results: List<InlineQueryResultArticle>,
+        cacheTime: Int = 1,
+        isPersonal: Boolean = true
+    ): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("inline_query_id", inlineQueryId)
+                put("results", json.encodeToJsonElement(results))
+                put("cache_time", cacheTime)
+                put("is_personal", isPersonal)
+            }
+            val res = client.post("$baseUrl/answerInlineQuery") {
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            logger.error("Error answering inline query $inlineQueryId: ${e.message}")
+            false
+        }
+    }
 }
 

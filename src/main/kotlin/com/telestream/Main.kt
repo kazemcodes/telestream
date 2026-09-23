@@ -88,8 +88,19 @@ fun main(): Unit = runBlocking {
             get("/api/sources") {
                 call.response.headers.append("Access-Control-Allow-Origin", "*")
                 val filter = call.request.queryParameters["filter"] ?: "all"
-                val list = ProviderManager.getProvidersByFilter(filter).map {
-                    mapOf("name" to it.name, "lang" to it.lang)
+                val q = call.request.queryParameters["q"]?.trim()
+                val all = CloudStreamRepoManager.getAggregatedSources(filter)
+                val filtered = if (!q.isNullOrBlank()) {
+                    all.filter {
+                        it.name.contains(q, ignoreCase = true) ||
+                        it.language.contains(q, ignoreCase = true) ||
+                        it.description?.contains(q, ignoreCase = true) == true
+                    }
+                } else {
+                    all
+                }
+                val list = filtered.map {
+                    mapOf("name" to it.name, "lang" to it.language, "description" to (it.description ?: ""))
                 }
                 call.respondText(mapper.writeValueAsString(list), ContentType.Application.Json)
             }

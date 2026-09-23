@@ -8,12 +8,7 @@ import com.telestream.providers.ProviderManager
 import com.telestream.providers.episodes
 import com.telestream.providers.year
 import com.telestream.repo.CloudStreamRepoManager
-import com.telestream.telegram.CallbackQuery
-import com.telestream.telegram.InlineKeyboardButton
-import com.telestream.telegram.InlineKeyboardMarkup
-import com.telestream.telegram.Message
-import com.telestream.telegram.TelegramClient
-import com.telestream.telegram.WebAppInfo
+import com.telestream.telegram.*
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
@@ -68,12 +63,14 @@ data class SearchExecRef(
 )
 data class SourceBrowserRef(
     val lang: String,
-    val page: Int
+    val page: Int,
+    val query: String? = null
 )
 data class SourceActionRef(
     val lang: String,
     val page: Int,
-    val sourceName: String
+    val sourceName: String,
+    val query: String? = null
 )
 
 class BotRunner(private val bot: TelegramClient) {
@@ -86,6 +83,8 @@ class BotRunner(private val bot: TelegramClient) {
 
     // Tracks if user explicitly selected a source for their upcoming text input
     private val userSearchPending = ConcurrentHashMap<Long, String>()
+    // Tracks if user is in source keyword filter mode
+    private val userSourceFilterPending = ConcurrentHashMap<Long, Boolean>()
 
     private fun isDebounced(userId: Long): Boolean {
         val now = System.currentTimeMillis()
@@ -119,6 +118,8 @@ class BotRunner(private val bot: TelegramClient) {
                                 handleMessage(update.message)
                             } else if (update.callbackQuery != null) {
                                 handleCallback(update.callbackQuery)
+                            } else if (update.inlineQuery != null) {
+                                handleInlineQuery(update.inlineQuery)
                             }
                         } catch (e: Exception) {
                             logger.error("Error processing update ${update.updateId}: ${e.message}", e)
@@ -129,6 +130,73 @@ class BotRunner(private val bot: TelegramClient) {
                 logger.warn("Polling error: ${e.message}. Retrying in 3s...")
                 delay(3000)
             }
+        }
+    }
+
+    private suspend fun handleInlineQuery(inlineQuery: InlineQuery) {
+        try {
+            val rawQuery = inlineQuery.query.trim()
+            val userId = inlineQuery.from.id
+            Database.ensureUser(userId)
+            val activeSource = Database.getUserSource(userId)
+
+            val isSourceQuery = rawQuery.startsWith("@source", ignoreCase = true) ||
+                    rawQuery.startsWith("#source", ignoreCase = true) ||
+                    rawQuery.startsWith("/source", ignoreCase = true) ||
+                    rawQuery.startsWith("source:", ignoreCase = true)
+
+            val cleanQuery = if (isSourceQuery) {
+                rawQuery.removePrefix("@source")
+                    .removePrefix("#source")
+                    .removePrefix("/source")
+                    .removePrefix("source:")
+                    .trim()
+            } else {
+                rawQuery
+            }
+
+            val allSources = CloudStreamRepoManager.getAllAggregatedSources()
+            val filtered = if (cleanQuery.isBlank()) {
+                // If blank, show top active & popular sources first
+                allSources.sortedByDescending { it.name.equals(activeSource, ignoreCase = true) }.take(35)
+            } else {
+                allSources.filter { src ->
+                    src.name.contains(cleanQuery, ignoreCase = true) ||
+                    src.language.contains(cleanQuery, ignoreCase = true) ||
+                    src.description?.contains(cleanQuery, ignoreCase = true) == true
+                }.take(35)
+            }
+
+            val results = filtered.mapIndexed { idx, src ->
+                val isActive = src.name.equals(activeSource, ignoreCase = true)
+                val statusIcon = if (isActive) "🔘" else "📡"
+                val langTag = "[${src.language.uppercase()}]"
+                val title = "$statusIcon ${src.name} $langTag"
+                val desc = "${if (isActive) "Active Source • " else ""}${src.description ?: "Movies & TV Series"}"
+
+                InlineQueryResultArticle(
+                    id = "src_${src.name}_$idx",
+                    title = title,
+                    description = desc,
+                    inputMessageContent = InputTextMessageContent(
+                        messageText = "/source ${src.name}"
+                    ),
+                    replyMarkup = InlineKeyboardMarkup(
+                        listOf(
+                            listOf(
+                                InlineKeyboardButton(
+                                    text = if (isActive) "🔘 Active: ${src.name}" else "📡 Set Active: ${src.name}",
+                                    callbackData = "src_quick:${src.name}"
+                                )
+                            )
+                        )
+                    )
+                )
+            }
+
+            bot.answerInlineQuery(inlineQuery.id, results, cacheTime = 1)
+        } catch (e: Exception) {
+            logger.warn("Error handling inline query: ${e.message}")
         }
     }
 
@@ -239,10 +307,40 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             text.startsWith("/sources") || text.startsWith("/manage_sources") || text.startsWith("/enabled_sources") -> {
+                userSourceFilterPending.remove(userId)
                 showSourcesManager(chatId, userId, lang)
             }
 
+            text.startsWith("/source") || text.startsWith("/src") -> {
+                userSourceFilterPending.remove(userId)
+                val query = text.removePrefix("/source").removePrefix("/src").trim()
+                if (query.isBlank()) {
+                    showSourcesManager(chatId, userId, lang)
+                } else {
+                    val allSources = CloudStreamRepoManager.getAllAggregatedSources()
+                    val matches = allSources.filter {
+                        it.name.contains(query, ignoreCase = true) ||
+                        it.language.contains(query, ignoreCase = true) ||
+                        it.description?.contains(query, ignoreCase = true) == true
+                    }
+                    if (matches.size == 1) {
+                        val matched = matches.first()
+                        Database.setUserSource(userId, matched.name)
+                        bot.sendMessage(
+                            chatId,
+                            t("source_switched_ready", lang, matched.name, matched.language.uppercase()),
+                            replyMarkup = getMainMenuKeyboard(lang, matched.name, isAdmin)
+                        )
+                    } else if (matches.isNotEmpty()) {
+                        showSourcesManager(chatId, userId, lang, filterLang = "all", page = 0, query = query)
+                    } else {
+                        bot.sendMessage(chatId, t("no_sources_found", lang, query))
+                    }
+                }
+            }
+
             text.startsWith("/search") -> {
+                userSourceFilterPending.remove(userId)
                 val query = text.removePrefix("/search").trim()
                 if (query.isBlank()) {
                     bot.sendMessage(chatId, t("search_prompt_direct", lang, activeSource))
@@ -354,9 +452,13 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             else -> {
-                // User sent title text directly: search active source immediately
-                val targetSource = userSearchPending.remove(userId) ?: activeSource
-                executeSearch(chatId, userId, lang, targetSource, text)
+                if (userSourceFilterPending.remove(userId) == true) {
+                    showSourcesManager(chatId, userId, lang, filterLang = "all", page = 0, query = text)
+                } else {
+                    // User sent title text directly: search active source immediately
+                    val targetSource = userSearchPending.remove(userId) ?: activeSource
+                    executeSearch(chatId, userId, lang, targetSource, text)
+                }
             }
         }
     }
@@ -557,10 +659,22 @@ class BotRunner(private val bot: TelegramClient) {
         lang: String,
         filterLang: String = "all",
         page: Int = 0,
+        query: String? = null,
         messageId: Long? = null
     ) {
         val activeSource = Database.getUserSource(userId)
-        val sources = CloudStreamRepoManager.getAggregatedSources(filterLang)
+        val allSources = CloudStreamRepoManager.getAggregatedSources(filterLang)
+        val sources = if (!query.isNullOrBlank()) {
+            val q = query.trim()
+            allSources.filter { src ->
+                src.name.contains(q, ignoreCase = true) ||
+                src.language.contains(q, ignoreCase = true) ||
+                src.description?.contains(q, ignoreCase = true) == true
+            }
+        } else {
+            allSources
+        }
+
         val pageSize = 6
         val totalPages = max(1, (sources.size + pageSize - 1) / pageSize)
         val safePage = page.coerceIn(0, totalPages - 1)
@@ -568,7 +682,21 @@ class BotRunner(private val bot: TelegramClient) {
 
         val rows = mutableListOf<List<InlineKeyboardButton>>()
 
-        // Language Filter Tabs: [ 🌐 All ] [ 🇬🇧 EN ] [ 🇮🇷 FA ] [ 🇸🇦 AR ]
+        // Row 1: Fast Search Controls: [ ⚡ Live Search Sources ] [ 🔍 Search by Name ]
+        rows.add(
+            listOf(
+                InlineKeyboardButton(
+                    text = t("btn_live_search", lang),
+                    switchInlineQueryCurrentChat = "@source "
+                ),
+                InlineKeyboardButton(
+                    text = t("btn_search_source", lang),
+                    callbackData = "src_search_prompt"
+                )
+            )
+        )
+
+        // Row 2: Language Filter Tabs: [ 🌐 All ] [ 🇬🇧 EN ] [ 🇮🇷 FA ] [ 🇸🇦 AR ]
         val topLangs = listOf("all", "en", "fa", "ar")
         val tabButtons = topLangs.map { l ->
             val isSelected = l.equals(filterLang, ignoreCase = true)
@@ -587,10 +715,31 @@ class BotRunner(private val bot: TelegramClient) {
                 else -> l.uppercase()
             }
             val label = if (isSelected) "• $flag $title •" else "$flag $title"
-            val token = CallbackTokenCache.put(SourceBrowserRef(l, 0))
+            val token = CallbackTokenCache.put(SourceBrowserRef(l, 0, query))
             InlineKeyboardButton(text = label, callbackData = "src_lang:$token")
         }
         rows.add(tabButtons)
+
+        // Row 3 (optional): Active search query clear button, or Quick Picks row if no query & page 0
+        if (!query.isNullOrBlank()) {
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = "${t("btn_clear_filter", lang)} (\"$query\")",
+                        callbackData = "src_clear"
+                    )
+                )
+            )
+        } else if (safePage == 0) {
+            val quickPicks = listOf("KissKH", "AvaMovie", "FaselHD", "XD Movies")
+            val pickButtons = quickPicks.map { pickName ->
+                val isActive = pickName.equals(activeSource, ignoreCase = true)
+                val token = CallbackTokenCache.put(SourceActionRef(filterLang, safePage, pickName, query))
+                val label = if (isActive) "🔘 $pickName" else pickName
+                InlineKeyboardButton(text = label, callbackData = if (isActive) "noop" else "src_set:$token")
+            }
+            rows.add(pickButtons)
+        }
 
         // Sources rows: Left button = Set Active, Right button = 1-click Toggle
         for (src in pageSources) {
@@ -599,7 +748,7 @@ class BotRunner(private val bot: TelegramClient) {
                     activeSource.startsWith(src.name, ignoreCase = true)
             val isEnabled = Database.isSourceEnabled(userId, src.name)
 
-            val actionToken = CallbackTokenCache.put(SourceActionRef(filterLang, safePage, src.name))
+            val actionToken = CallbackTokenCache.put(SourceActionRef(filterLang, safePage, src.name, query))
             val selectLabel = if (isActive) "🔘 ${src.name}" else "📡 ${src.name}"
             val selectCb = if (isActive) "noop" else "src_set:$actionToken"
 
@@ -618,12 +767,12 @@ class BotRunner(private val bot: TelegramClient) {
         if (totalPages > 1) {
             val navRow = mutableListOf<InlineKeyboardButton>()
             if (safePage > 0) {
-                val prevToken = CallbackTokenCache.put(SourceBrowserRef(filterLang, safePage - 1))
+                val prevToken = CallbackTokenCache.put(SourceBrowserRef(filterLang, safePage - 1, query))
                 navRow.add(InlineKeyboardButton(text = t("btn_prev", lang), callbackData = "src_page:$prevToken"))
             }
             navRow.add(InlineKeyboardButton(text = "📄 ${safePage + 1}/$totalPages", callbackData = "noop"))
             if (safePage < totalPages - 1) {
-                val nextToken = CallbackTokenCache.put(SourceBrowserRef(filterLang, safePage + 1))
+                val nextToken = CallbackTokenCache.put(SourceBrowserRef(filterLang, safePage + 1, query))
                 navRow.add(InlineKeyboardButton(text = t("btn_next", lang), callbackData = "src_page:$nextToken"))
             }
             rows.add(navRow)
@@ -637,7 +786,11 @@ class BotRunner(private val bot: TelegramClient) {
             )
         )
 
-        val header = t("sources_manager_title", lang, activeSource)
+        val header = if (!query.isNullOrBlank()) {
+            t("sources_search_results", lang, query, sources.size, activeSource)
+        } else {
+            t("sources_manager_title", lang, activeSource)
+        }
         val keyboard = InlineKeyboardMarkup(rows)
 
         if (messageId != null) {
@@ -941,11 +1094,49 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.answerCallbackQuery(callback.id)
             }
 
+            data == "src_search_prompt" -> {
+                userSourceFilterPending[userId] = true
+                val prompt = t("source_search_prompt", lang)
+                val cancelBtn = InlineKeyboardMarkup(
+                    listOf(
+                        listOf(
+                            InlineKeyboardButton(text = t("btn_back", lang), callbackData = "src_search_cancel")
+                        )
+                    )
+                )
+                bot.sendMessage(chatId, prompt, replyMarkup = cancelBtn)
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data == "src_search_cancel" -> {
+                userSourceFilterPending.remove(userId)
+                showSourcesManager(chatId, userId, lang, messageId = messageId)
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data == "src_clear" -> {
+                userSourceFilterPending.remove(userId)
+                showSourcesManager(chatId, userId, lang, filterLang = "all", page = 0, query = null, messageId = messageId)
+                bot.answerCallbackQuery(callback.id)
+            }
+
+            data.startsWith("src_quick:") -> {
+                val srcName = data.removePrefix("src_quick:")
+                Database.setUserSource(userId, srcName)
+                val langTag = CloudStreamRepoManager.getAllAggregatedSources().find { it.name.equals(srcName, ignoreCase = true) }?.language?.uppercase() ?: "ALL"
+                bot.answerCallbackQuery(callback.id, t("source_selected", lang, srcName))
+                bot.sendMessage(
+                    chatId,
+                    t("source_switched_ready", lang, srcName, langTag),
+                    replyMarkup = getMainMenuKeyboard(lang, srcName, Config.isAdmin(userId))
+                )
+            }
+
             data.startsWith("src_lang:") -> {
                 val token = data.removePrefix("src_lang:")
                 val ref = CallbackTokenCache.get<SourceBrowserRef>(token)
                 if (ref != null) {
-                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = 0, messageId = messageId)
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = 0, query = ref.query, messageId = messageId)
                 }
                 bot.answerCallbackQuery(callback.id)
             }
@@ -954,7 +1145,7 @@ class BotRunner(private val bot: TelegramClient) {
                 val token = data.removePrefix("src_page:")
                 val ref = CallbackTokenCache.get<SourceBrowserRef>(token)
                 if (ref != null) {
-                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, messageId = messageId)
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, query = ref.query, messageId = messageId)
                 }
                 bot.answerCallbackQuery(callback.id)
             }
@@ -965,7 +1156,7 @@ class BotRunner(private val bot: TelegramClient) {
                 if (ref != null) {
                     Database.setUserSource(userId, ref.sourceName)
                     bot.answerCallbackQuery(callback.id, t("source_selected", lang, ref.sourceName))
-                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, messageId = messageId)
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, query = ref.query, messageId = messageId)
                 } else {
                     bot.answerCallbackQuery(callback.id, "Session expired")
                 }
@@ -978,7 +1169,7 @@ class BotRunner(private val bot: TelegramClient) {
                     val newStatus = Database.toggleSourceEnabled(userId, ref.sourceName)
                     val toast = if (newStatus) t("source_toggled_on", lang, ref.sourceName) else t("source_toggled_off", lang, ref.sourceName)
                     bot.answerCallbackQuery(callback.id, toast)
-                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, messageId = messageId)
+                    showSourcesManager(chatId, userId, lang, filterLang = ref.lang, page = ref.page, query = ref.query, messageId = messageId)
                 } else {
                     bot.answerCallbackQuery(callback.id, "Session expired")
                 }
