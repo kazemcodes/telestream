@@ -561,7 +561,7 @@ class BotRunner(private val bot: TelegramClient) {
                 if (!isAdmin) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                 } else {
-                    showReposSummary(chatId, lang)
+                    showAdminReposManager(chatId, lang, 0)
                 }
             }
 
@@ -763,16 +763,6 @@ class BotRunner(private val bot: TelegramClient) {
             )
         }
 
-        if (items.size > 1) {
-            val prevIdx = if (currentIndex > 0) currentIndex - 1 else items.size - 1
-            val nextIdx = if (currentIndex < items.size - 1) currentIndex + 1 else 0
-            val flipperRow = mutableListOf<InlineKeyboardButton>()
-            flipperRow.add(InlineKeyboardButton(text = t("btn_prev", lang), callbackData = "car_nav:$carouselToken:$prevIdx"))
-            flipperRow.add(InlineKeyboardButton(text = "🖼 ${currentIndex + 1}/${items.size}", callbackData = "car_nav:$carouselToken:$currentIndex"))
-            flipperRow.add(InlineKeyboardButton(text = t("btn_next", lang), callbackData = "car_nav:$carouselToken:$nextIdx"))
-            rows.add(flipperRow)
-        }
-
         if (items.size > pageSize) {
             val totalPages = (items.size + pageSize - 1) / pageSize
             val prevPageStart = if (pageIndex > 0) (pageIndex - 1) * pageSize else (totalPages - 1) * pageSize
@@ -780,29 +770,20 @@ class BotRunner(private val bot: TelegramClient) {
             rows.add(
                 listOf(
                     InlineKeyboardButton(text = "⏪ ${t("btn_prev", lang)}", callbackData = "car_nav:$carouselToken:$prevPageStart"),
-                    InlineKeyboardButton(text = "📄 ${pageIndex + 1} / $totalPages", callbackData = "car_nav:$carouselToken:$currentIndex"),
+                    InlineKeyboardButton(text = "📄 ${pageIndex + 1} / $totalPages", callbackData = "noop"),
                     InlineKeyboardButton(text = "${t("btn_next", lang)} ⏩", callbackData = "car_nav:$carouselToken:$nextPageStart")
                 )
             )
         }
 
+        // Native Telegram Photo Slider (Album) Button
         val validPosters = items.count { !it.posterUrl.isNullOrBlank() && it.posterUrl.startsWith("http") }
         if (validPosters >= 1) {
+            val countLabel = validPosters.coerceAtMost(10)
             rows.add(
                 listOf(
                     InlineKeyboardButton(
-                        text = "${t("btn_image_pager", lang)} ($validPosters)",
-                        callbackData = "car_pager:$carouselToken:$currentIndex"
-                    )
-                )
-            )
-        }
-        if (validPosters >= 2) {
-            val albumLimit = validPosters.coerceAtMost(10)
-            rows.add(
-                listOf(
-                    InlineKeyboardButton(
-                        text = "${t("btn_view_album", lang)} ($albumLimit)",
+                        text = "${t("btn_photo_slider", lang)} ($countLabel)",
                         callbackData = "car_album:$carouselToken"
                     )
                 )
@@ -1978,13 +1959,49 @@ class BotRunner(private val bot: TelegramClient) {
                 }
             }
 
-            data == "admin:repos" -> {
+            data.startsWith("admin:repos") -> {
                 if (Config.isAdmin(userId)) {
-                    showReposSummary(chatId, lang, messageId)
+                    val page = data.removePrefix("admin:repos").removePrefix(":").toIntOrNull() ?: 0
+                    showAdminReposManager(chatId, lang, page, messageId)
                     bot.answerCallbackQuery(callback.id)
                 } else {
                     bot.answerCallbackQuery(callback.id, t("admin_only", lang), showAlert = true)
                 }
+            }
+
+            data.startsWith("admin:repo_toggle:") -> {
+                if (!Config.isAdmin(userId)) {
+                    bot.answerCallbackQuery(callback.id, t("admin_only", lang), showAlert = true)
+                    return
+                }
+                val parts = data.removePrefix("admin:repo_toggle:").split(":")
+                val repoId = parts.getOrNull(0) ?: ""
+                val page = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                val repos = Database.getAdminRepos()
+                val target = repos.firstOrNull { it.repoId.equals(repoId, ignoreCase = true) }
+                if (target != null) {
+                    val newStatus = !target.isEnabled
+                    Database.setRepoEnabled(target.repoId, target.repoName, newStatus)
+                    val statusText = if (newStatus) "✅ ${target.repoName} فعال شد" else "❌ ${target.repoName} غیرفعال شد"
+                    bot.answerCallbackQuery(callback.id, statusText)
+                    showAdminReposManager(chatId, lang, page, messageId)
+                } else {
+                    bot.answerCallbackQuery(callback.id)
+                }
+            }
+
+            data.startsWith("admin:repo_all:") -> {
+                if (!Config.isAdmin(userId)) {
+                    bot.answerCallbackQuery(callback.id, t("admin_only", lang), showAlert = true)
+                    return
+                }
+                val parts = data.removePrefix("admin:repo_all:").split(":")
+                val enable = parts.getOrNull(0) == "1"
+                val page = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                Database.setAllReposEnabled(enable)
+                val statusText = if (enable) "✅ تمامی مخازن فعال شدند" else "❌ تمامی مخازن غیرفعال شدند"
+                bot.answerCallbackQuery(callback.id, statusText)
+                showAdminReposManager(chatId, lang, page, messageId)
             }
 
             data == "menu:search" -> {
@@ -2043,7 +2060,11 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             data == "menu:repos" -> {
-                showReposSummary(chatId, lang, messageId)
+                if (Config.isAdmin(userId)) {
+                    showAdminReposManager(chatId, lang, 0, messageId)
+                } else {
+                    bot.answerCallbackQuery(callback.id, t("admin_only", lang), showAlert = true)
+                }
                 bot.answerCallbackQuery(callback.id)
             }
 
@@ -2074,7 +2095,7 @@ class BotRunner(private val bot: TelegramClient) {
                 val repos = CloudStreamRepoManager.syncAllDefaults()
                 val totalPlugins = repos.sumOf { it.pluginsCount }
                 bot.sendMessage(chatId, t("sync_done", lang, totalPlugins, repos.size))
-                showReposSummary(chatId, lang)
+                showAdminReposManager(chatId, lang, 0)
             }
 
             data == "close" || data == "menu:start" -> {
@@ -2217,9 +2238,11 @@ class BotRunner(private val bot: TelegramClient) {
                     return
                 }
 
-                val validPhotos = ref.items
+                val validItems = ref.items
                     .filter { !it.posterUrl.isNullOrBlank() && it.posterUrl.startsWith("http") }
                     .take(10)
+
+                val validPhotos = validItems
                     .mapIndexed { idx, item ->
                         val safePoster = sanitizeTelegramUrl(item.posterUrl!!) ?: item.posterUrl!!
                         val yearStr = item.year?.let { " ($it)" } ?: ""
@@ -2231,29 +2254,36 @@ class BotRunner(private val bot: TelegramClient) {
                     }
 
                 if (validPhotos.isEmpty()) {
-                    bot.answerCallbackQuery(callback.id, if (lang == "fa") "تصویری یافت نشد" else "No images found", showAlert = true)
+                    bot.answerCallbackQuery(callback.id, if (lang == "fa") "تصویری برای اسلایدر یافت نشد" else "No images found for slider", showAlert = true)
                     return
                 }
 
-                bot.answerCallbackQuery(callback.id, if (lang == "fa") "در حال ارسال آلبوم تصاویر..." else "Sending photo album...")
+                bot.answerCallbackQuery(callback.id, if (lang == "fa") "در حال ارسال اسلایدر تصاویر..." else "Sending photo slider album...")
                 val success = bot.sendMediaGroup(chatId, validPhotos)
                 if (success) {
-                    val promptText = t("album_sent_success", lang)
-                    val pagerKb = InlineKeyboardMarkup(
+                    val promptText = "${t("btn_photo_slider", lang)}\n\n${t("slider_instructions", lang)}"
+                    val sliderButtons = mutableListOf<List<InlineKeyboardButton>>()
+
+                    // Watch buttons in 2 columns
+                    val actionButtons = validItems.mapIndexed { idx, item ->
+                        val itemToken = CallbackTokenCache.put(MediaRef(item.apiName, sanitizeTelegramUrl(item.url) ?: item.url))
+                        InlineKeyboardButton(
+                            text = "▶️ ${idx + 1}. ${item.name.take(16)}",
+                            callbackData = "v:$itemToken"
+                        )
+                    }.chunked(2)
+                    sliderButtons.addAll(actionButtons)
+
+                    // Navigation row: [ 📋 Return to List ] [ ❌ Close ]
+                    sliderButtons.add(
                         listOf(
-                            listOf(
-                                InlineKeyboardButton(
-                                    text = "${t("btn_image_pager", lang)} (${ref.items.size})",
-                                    callbackData = "car_pager:$token:0"
-                                )
-                            )
+                            InlineKeyboardButton(text = t("btn_view_list", lang), callbackData = "car_list:$token:0"),
+                            InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                         )
                     )
-                    bot.sendMessage(chatId, promptText, replyMarkup = pagerKb)
+                    bot.sendMessage(chatId, promptText, replyMarkup = InlineKeyboardMarkup(sliderButtons))
                 } else {
-                    val fallbackNotice = t("album_fallback_pager", lang)
-                    bot.sendMessage(chatId, fallbackNotice)
-                    showPagerScreen(chatId, null, ref, token, ref.currentIndex, lang, userId)
+                    bot.sendMessage(chatId, if (lang == "fa") "⚠️ امکان ارسال اسلایدر تصاویر وجود نداشت. لطفاً از لیست متنی استفاده کنید." else "⚠️ Could not send photo slider album. Please use the text list.")
                 }
             }
 
@@ -2735,7 +2765,7 @@ class BotRunner(private val bot: TelegramClient) {
             listOf(
                 listOf(InlineKeyboardButton(text = t("btn_toggle_nsfw", lang), callbackData = "toggle_nsfw")),
                 listOf(
-                    InlineKeyboardButton(text = t("btn_repos", lang), callbackData = "admin:repos"),
+                    InlineKeyboardButton(text = t("btn_admin_repos", lang), callbackData = "admin:repos:0"),
                     InlineKeyboardButton(text = t("btn_sync", lang), callbackData = "menu:sync")
                 ),
                 listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close"))
@@ -2803,19 +2833,66 @@ class BotRunner(private val bot: TelegramClient) {
         }
     }
 
-    private suspend fun showReposSummary(chatId: Long, lang: String, messageId: Long? = null) {
-        val summary = CloudStreamRepoManager.getSummary()
-        val totalRepos = summary["totalRepositories"] as? Int ?: 0
-        val totalPlugins = summary["totalPlugins"] as? Int ?: 0
+    private suspend fun showAdminReposManager(chatId: Long, lang: String, page: Int = 0, messageId: Long? = null) {
+        val repos = Database.getAdminRepos()
+        val pageSize = 6
+        val totalPages = max(1, (repos.size + pageSize - 1) / pageSize)
+        val safePage = page.coerceIn(0, totalPages - 1)
+        val pageRepos = repos.drop(safePage * pageSize).take(pageSize)
 
-        val text = t("repos_summary", lang, totalRepos, totalPlugins)
-        val keyboard = InlineKeyboardMarkup(
+        val enabledCount = repos.count { it.isEnabled }
+        val text = buildString {
+            append(t("admin_repos_title", lang))
+            append("\n\n📊 ${if (lang == "fa") "کل مخازن" else "Total Repos"}: *${repos.size}* | ${if (lang == "fa") "فعال" else "Active"}: *${enabledCount}* | ${if (lang == "fa") "غیرفعال" else "Disabled"}: *${repos.size - enabledCount}*")
+            append("\n${if (lang == "fa") "• جهت فعال/غیرفعال‌سازی هر مخزن روی آن بزنید:" else "• Tap any repository to toggle its availability:"}")
+        }
+
+        val rows = mutableListOf<List<InlineKeyboardButton>>()
+
+        // Repo toggle buttons
+        for (repo in pageRepos) {
+            val statusIcon = if (repo.isEnabled) "✅" else "❌"
+            val label = "$statusIcon ${repo.repoName}"
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = label,
+                        callbackData = "admin:repo_toggle:${repo.repoId}:$safePage"
+                    )
+                )
+            )
+        }
+
+        // Pagination row if > 1 page
+        if (totalPages > 1) {
+            val navRow = mutableListOf<InlineKeyboardButton>()
+            if (safePage > 0) {
+                navRow.add(InlineKeyboardButton(text = t("btn_prev", lang), callbackData = "admin:repos:${safePage - 1}"))
+            }
+            navRow.add(InlineKeyboardButton(text = "📄 ${safePage + 1}/$totalPages", callbackData = "noop"))
+            if (safePage < totalPages - 1) {
+                navRow.add(InlineKeyboardButton(text = t("btn_next", lang), callbackData = "admin:repos:${safePage + 1}"))
+            }
+            rows.add(navRow)
+        }
+
+        // Bulk action row: [ ✅ Enable All ] [ ❌ Disable All ]
+        rows.add(
             listOf(
-                listOf(InlineKeyboardButton(text = t("btn_sync", lang), callbackData = "menu:sync")),
-                listOf(InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close"))
+                InlineKeyboardButton(text = t("btn_enable_all", lang), callbackData = "admin:repo_all:1:$safePage"),
+                InlineKeyboardButton(text = t("btn_disable_all", lang), callbackData = "admin:repo_all:0:$safePage")
             )
         )
 
+        // Bottom row: [ 🔄 Sync ] [ ⬅️ Back to Admin ]
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_sync", lang), callbackData = "menu:sync"),
+                InlineKeyboardButton(text = t("btn_back_admin", lang), callbackData = "menu:admin")
+            )
+        )
+
+        val keyboard = InlineKeyboardMarkup(rows)
         if (messageId != null) {
             val edited = bot.editMessageText(chatId, messageId, text, replyMarkup = keyboard)
             if (!edited) bot.sendMessage(chatId, text, replyMarkup = keyboard)

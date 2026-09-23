@@ -91,4 +91,33 @@ class DatabaseTest {
         Database.toggleSourceEnabled(testUser, "FaselHD")
         assertFalse(Database.isSourceEnabled(testUser, "FaselHD"))
     }
+
+    @Test
+    fun testAdminRepoManagement() {
+        val repos = Database.getAdminRepos()
+        assertTrue(repos.isNotEmpty())
+
+        // Default should be enabled
+        assertTrue(Database.isRepoEnabled("cspr"))
+        assertTrue(Database.isRepoEnabled("Official CloudStream"))
+
+        // Toggle disable
+        Database.setRepoEnabled("cspr", "Official CloudStream", false)
+        assertFalse(Database.isRepoEnabled("cspr"))
+        assertFalse(Database.isRepoEnabled("Official CloudStream"))
+
+        // Toggle back enabled
+        Database.setRepoEnabled("cspr", "Official CloudStream", true)
+        assertTrue(Database.isRepoEnabled("cspr"))
+        assertTrue(Database.isRepoEnabled("Official CloudStream"))
+
+        // Test bulk enable/disable
+        Database.setAllReposEnabled(false)
+        assertFalse(Database.isRepoEnabled("cspr"))
+        assertFalse(Database.isRepoEnabled("phisherrepo"))
+
+        Database.setAllReposEnabled(true)
+        assertTrue(Database.isRepoEnabled("cspr"))
+        assertTrue(Database.isRepoEnabled("phisherrepo"))
+    }
 }

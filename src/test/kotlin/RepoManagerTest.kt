@@ -40,4 +40,20 @@ class RepoManagerTest {
         assertTrue(langs.contains("all"))
         assertTrue(langs.contains("en"))
     }
+
+    @Test
+    fun testAdminRepoDisablementHidesSources() {
+        val initialSources = CloudStreamRepoManager.getAllAggregatedSources()
+        assertTrue(initialSources.any { it.name == "StreamPlay" })
+
+        // Disable Phisher Providers repo
+        com.telestream.database.Database.setRepoEnabled("phisherrepo", "Phisher Providers", false)
+        val filteredSources = CloudStreamRepoManager.getAllAggregatedSources()
+        kotlin.test.assertFalse(filteredSources.any { it.name == "StreamPlay" })
+
+        // Re-enable Phisher Providers repo
+        com.telestream.database.Database.setRepoEnabled("phisherrepo", "Phisher Providers", true)
+        val restoredSources = CloudStreamRepoManager.getAllAggregatedSources()
+        assertTrue(restoredSources.any { it.name == "StreamPlay" })
+    }
 }

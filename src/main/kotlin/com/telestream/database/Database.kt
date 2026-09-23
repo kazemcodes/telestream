@@ -103,6 +103,16 @@ object Database {
                     );
                     """.trimIndent()
                 )
+                stmt.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_repos (
+                        repo_id TEXT PRIMARY KEY,
+                        repo_name TEXT,
+                        is_enabled INTEGER DEFAULT 1,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """.trimIndent()
+                )
             }
         }
     }
@@ -485,4 +495,96 @@ object Database {
             }
         }
     }
+
+    fun isRepoEnabled(repoIdOrName: String): Boolean {
+        if (repoIdOrName.isBlank()) return true
+        val clean = repoIdOrName.trim().lowercase()
+        DriverManager.getConnection(url).use { conn ->
+            val sql = "SELECT is_enabled FROM admin_repos WHERE LOWER(repo_id) = ? OR LOWER(repo_name) = ?"
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, clean)
+                stmt.setString(2, clean)
+                val rs = stmt.executeQuery()
+                if (rs.next()) {
+                    return rs.getInt("is_enabled") == 1
+                }
+            }
+        }
+        // Repositories are enabled by default until an admin explicitly toggles them off
+        return true
+    }
+
+    fun setRepoEnabled(repoId: String, repoName: String, enabled: Boolean) {
+        DriverManager.getConnection(url).use { conn ->
+            val sql = """
+                INSERT INTO admin_repos (repo_id, repo_name, is_enabled) VALUES (?, ?, ?)
+                ON CONFLICT(repo_id) DO UPDATE SET is_enabled = excluded.is_enabled, repo_name = excluded.repo_name, updated_at = CURRENT_TIMESTAMP
+            """.trimIndent()
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, repoId)
+                stmt.setString(2, repoName)
+                stmt.setInt(3, if (enabled) 1 else 0)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    fun setAllReposEnabled(enabled: Boolean) {
+        val allRepos = com.telestream.repo.CloudStreamRepoManager.DEFAULT_REPOS
+        DriverManager.getConnection(url).use { conn ->
+            conn.autoCommit = false
+            try {
+                val sql = """
+                    INSERT INTO admin_repos (repo_id, repo_name, is_enabled) VALUES (?, ?, ?)
+                    ON CONFLICT(repo_id) DO UPDATE SET is_enabled = excluded.is_enabled, repo_name = excluded.repo_name, updated_at = CURRENT_TIMESTAMP
+                """.trimIndent()
+                conn.prepareStatement(sql).use { stmt ->
+                    for (r in allRepos) {
+                        stmt.setString(1, r.id)
+                        stmt.setString(2, r.name)
+                        stmt.setInt(3, if (enabled) 1 else 0)
+                        stmt.addBatch()
+                    }
+                    stmt.executeBatch()
+                }
+                conn.commit()
+            } catch (e: Exception) {
+                conn.rollback()
+                throw e
+            } finally {
+                conn.autoCommit = true
+            }
+        }
+    }
+
+    fun getAdminRepos(): List<AdminRepoRecord> {
+        val allDefault = com.telestream.repo.CloudStreamRepoManager.DEFAULT_REPOS
+        val statusMap = mutableMapOf<String, Boolean>()
+        DriverManager.getConnection(url).use { conn ->
+            val sql = "SELECT repo_id, is_enabled FROM admin_repos"
+            conn.prepareStatement(sql).use { stmt ->
+                val rs = stmt.executeQuery()
+                while (rs.next()) {
+                    statusMap[rs.getString("repo_id").lowercase()] = rs.getInt("is_enabled") == 1
+                }
+            }
+        }
+        return allDefault.map { repo ->
+            AdminRepoRecord(
+                repoId = repo.id,
+                repoName = repo.name,
+                url = repo.url,
+                description = repo.description,
+                isEnabled = statusMap[repo.id.lowercase()] ?: true
+            )
+        }
+    }
 }
+
+data class AdminRepoRecord(
+    val repoId: String,
+    val repoName: String,
+    val url: String,
+    val description: String,
+    val isEnabled: Boolean
+)

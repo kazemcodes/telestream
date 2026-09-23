@@ -171,10 +171,17 @@ If you enjoy using this bot, please consider supporting development and server c
         "admin_help" to """
 ⚙️ *Admin Commands:*
 • `/admin` - View dashboard & toggle NSFW
+• `/repos` - Manage & enable/disable repositories
 • `/nsfw on|off` - Toggle adult sources
 • `/sync` - Sync repositories
 • `/addrepo <url>` - Add custom repository
-""".trimIndent()
+""".trimIndent(),
+        "btn_photo_slider" to "🖼 Photo Slider (Swipe Album)",
+        "slider_instructions" to "🎬 Swipe left/right through the posters. Tap any button below to watch:",
+        "admin_repos_title" to "📦 *Repository Management*\n\nSources from disabled repositories are hidden from regular users:",
+        "btn_admin_repos" to "📦 Manage Repositories",
+        "btn_back_admin" to "⬅️ Back to Admin Panel",
+        "btn_view_list" to "📋 View Text List"
     )
 
     private val fa = mapOf(
@@ -347,10 +354,17 @@ If you enjoy using this bot, please consider supporting development and server c
         "admin_help" to """
 ⚙️ *دستورات مدیریت:*
 • `/admin` - مشاهده داشبورد و آمار سیستم
+• `/repos` - مدیریت و فعال/غیرفعال‌سازی مخازن
 • `/nsfw on|off` - محدودسازی یا فعال‌سازی سورس‌های بزرگسال
 • `/sync` - همگام‌سازی مخازن کلوداستریم
 • `/addrepo <url>` - افزودن مخزن دلخواه
-""".trimIndent()
+""".trimIndent(),
+        "btn_photo_slider" to "🖼 اسلایدر پوسترها (آلبوم لمسی)",
+        "slider_instructions" to "🎬 تصاویر را به چپ و راست بکشید (Swipe). برای تماشای هر عنوان روی کلید آن بزنید:",
+        "admin_repos_title" to "📦 *مدیریت مخازن سورس‌ها*\n\nسورس‌های مخازن غیرفعال به کاربران نمایش داده نمی‌شوند:",
+        "btn_admin_repos" to "📦 مدیریت مخازن",
+        "btn_back_admin" to "⬅️ بازگشت به پنل مدیریت",
+        "btn_view_list" to "📋 مشاهده لیست متنی"
     )
 
     fun donationMessage(lang: String = "en"): String {

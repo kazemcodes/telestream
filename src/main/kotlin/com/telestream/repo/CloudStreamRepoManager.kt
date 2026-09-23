@@ -428,6 +428,7 @@ object CloudStreamRepoManager {
     fun searchPlugins(query: String, lang: String? = null): List<PluginMetadata> {
         val q = query.trim().lowercase()
         return cachedPlugins.filter { p ->
+            val matchRepo = p.repositoryName == null || com.telestream.database.Database.isRepoEnabled(p.repositoryName)
             val matchQuery = (p.name.lowercase().contains(q) ||
                     (p.description?.lowercase()?.contains(q) == true) ||
                     (p.internalName?.lowercase()?.contains(q) == true))
@@ -436,7 +437,7 @@ object CloudStreamRepoManager {
                 p.language.equals(lang, ignoreCase = true)
             } else true
 
-            matchQuery && matchLang
+            matchRepo && matchQuery && matchLang
         }
     }
 
@@ -544,8 +545,12 @@ object CloudStreamRepoManager {
         val list = mutableListOf<AggregatedSource>()
         val seen = mutableSetOf<String>()
 
-        // Remote repository plugins
+        // Remote repository plugins (only include sources from repositories enabled by admin)
         for (p in cachedPlugins) {
+            val repoName = p.repositoryName
+            if (repoName != null && !com.telestream.database.Database.isRepoEnabled(repoName)) {
+                continue
+            }
             val key = p.name.lowercase()
             if (!seen.contains(key)) {
                 seen.add(key)
