@@ -100,6 +100,12 @@ class CloudStreamPluginLoaderTest {
         assertTrue(spSearch.isNotEmpty(), "StreamPlay search should return results")
         println("Verified StreamPlay search: found ${spSearch.size} items for 'batman'")
 
+        val firstItem = spSearch.first()
+        println("Testing StreamPlay.load with url: ${firstItem.url}")
+        val loaded = com.telestream.providers.ProviderManager.load("StreamPlay", firstItem.url)
+        assertNotNull(loaded, "StreamPlay.load should succeed without SerializationException")
+        println("Verified StreamPlay load: name=${loaded.name}, url=${loaded.url}")
+
         val spPopular = com.telestream.providers.ProviderManager.getPopular("StreamPlay")
         assertTrue(spPopular.isNotEmpty(), "StreamPlay getPopular should return results")
         println("Verified StreamPlay getPopular: found ${spPopular.size} items")

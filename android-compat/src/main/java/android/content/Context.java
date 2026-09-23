@@ -32,5 +32,7 @@ public abstract class Context {
     public Object getResources() { throw new RuntimeException("Stub!"); }
     public Object getAssets() { throw new RuntimeException("Stub!"); }
     public Object getContentResolver() { throw new RuntimeException("Stub!"); }
+    public String getString(int resId) { return String.valueOf(resId); }
+    public String getString(int resId, Object... formatArgs) { return String.valueOf(resId); }
     public ClassLoader getClassLoader() { return getClass().getClassLoader(); }
 }
