@@ -12,7 +12,9 @@ import com.telestream.repo.AggregatedSource
 import com.telestream.repo.CloudStreamRepoManager
 import com.telestream.telegram.*
 import kotlinx.coroutines.*
+import org.json.JSONObject
 import org.slf4j.LoggerFactory
+import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
@@ -44,6 +46,55 @@ fun sanitizeTelegramUrl(rawUrl: String?): String? {
     if (rawUrl.isNullOrBlank()) return null
     val trimmed = rawUrl.trim()
     return trimmed.replace(" ", "%20")
+}
+
+fun resolveWebUrl(rawUrl: String?, providerName: String? = null, title: String? = null): String? {
+    if (!rawUrl.isNullOrBlank()) {
+        val trimmed = rawUrl.trim()
+        if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            return sanitizeTelegramUrl(trimmed)
+        }
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try {
+                val json = JSONObject(trimmed)
+                val directUrl = json.optString("url")
+                if (directUrl.startsWith("http://", ignoreCase = true) || directUrl.startsWith("https://", ignoreCase = true)) {
+                    return sanitizeTelegramUrl(directUrl)
+                }
+                val imdbId = json.optString("imdbId")
+                if (imdbId.isNotBlank() && imdbId != "null") {
+                    return "https://www.imdb.com/title/$imdbId"
+                }
+                val id = json.opt("id")?.toString()
+                val type = json.optString("type")
+                if (!id.isNullOrBlank() && id != "null" && type.isNotBlank()) {
+                    val tmdbType = if (type.equals("tv", ignoreCase = true)) "tv" else "movie"
+                    return "https://www.themoviedb.org/$tmdbType/$id"
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    if (!providerName.isNullOrBlank()) {
+        val provider = ProviderManager.getProvider(providerName)
+        val mainUrl = provider?.mainUrl?.trim()
+        if (!mainUrl.isNullOrBlank() &&
+            !mainUrl.equals("NONE", ignoreCase = true) &&
+            (mainUrl.startsWith("http://", ignoreCase = true) || mainUrl.startsWith("https://", ignoreCase = true))
+        ) {
+            return sanitizeTelegramUrl(mainUrl)
+        }
+    }
+
+    if (!title.isNullOrBlank()) {
+        val cleanTitle = title.trim()
+        if (cleanTitle.isNotBlank()) {
+            val encoded = URLEncoder.encode(cleanTitle, "UTF-8")
+            return "https://www.themoviedb.org/search?query=$encoded"
+        }
+    }
+
+    return null
 }
 
 data class MediaRef(val provider: String, val url: String)
@@ -798,29 +849,69 @@ class BotRunner(private val bot: TelegramClient) {
         return when (ref.contextType) {
             "search" -> {
                 val queryToken = CallbackTokenCache.put(ref.query ?: "")
-                listOf(
+                val srcUrl = resolveWebUrl(null, ref.sourceName, ref.query)
+                val rows = mutableListOf<List<InlineKeyboardButton>>()
+                if (!srcUrl.isNullOrBlank()) {
+                    rows.add(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = t("btn_open_website", lang),
+                                url = srcUrl
+                            )
+                        )
+                    )
+                }
+                rows.add(
                     listOf(
                         InlineKeyboardButton(
                             text = t("btn_search_another_source", lang),
                             callbackData = "src_another:$queryToken"
                         )
-                    ),
+                    )
+                )
+                rows.add(
                     listOf(
                         InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                     )
                 )
+                rows
             }
             "category" -> {
-                listOf(
+                val catUrl = resolveWebUrl(null, ref.sourceName, ref.query)
+                val rows = mutableListOf<List<InlineKeyboardButton>>()
+                if (!catUrl.isNullOrBlank()) {
+                    rows.add(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = t("btn_open_website", lang),
+                                url = catUrl
+                            )
+                        )
+                    )
+                }
+                rows.add(
                     listOf(
                         InlineKeyboardButton(text = t("btn_categories", lang), callbackData = "menu:categories"),
                         InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                     )
                 )
+                rows
             }
             else -> {
                 val isPopular = ref.feedType == "popular"
-                listOf(
+                val srcUrl = resolveWebUrl(null, ref.sourceName)
+                val rows = mutableListOf<List<InlineKeyboardButton>>()
+                if (!srcUrl.isNullOrBlank()) {
+                    rows.add(
+                        listOf(
+                            InlineKeyboardButton(
+                                text = t("btn_open_website", lang),
+                                url = srcUrl
+                            )
+                        )
+                    )
+                }
+                rows.add(
                     listOf(
                         InlineKeyboardButton(
                             text = if (isPopular) "🔘 ${t("btn_popular", lang)}" else t("btn_popular", lang),
@@ -830,7 +921,9 @@ class BotRunner(private val bot: TelegramClient) {
                             text = if (!isPopular) "🔘 ${t("btn_latest", lang)}" else t("btn_latest", lang),
                             callbackData = "feed:latest"
                         )
-                    ),
+                    )
+                )
+                rows.add(
                     listOf(
                         InlineKeyboardButton(
                             text = "${t("btn_switch_source", lang)} (${ref.sourceName})",
@@ -839,6 +932,7 @@ class BotRunner(private val bot: TelegramClient) {
                         InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
                     )
                 )
+                rows
             }
         }
     }
@@ -924,6 +1018,15 @@ class BotRunner(private val bot: TelegramClient) {
                 InlineKeyboardButton(text = bookmarkText, callbackData = bookmarkData)
             )
         )
+
+        val itemWebUrl = resolveWebUrl(currentItem.url, currentItem.apiName, currentItem.name)
+        if (!itemWebUrl.isNullOrBlank()) {
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(text = t("btn_open_website", lang), url = itemWebUrl)
+                )
+            )
+        }
 
         // Row 4: Switch back to List View and Close
         rows.add(
@@ -1013,24 +1116,36 @@ class BotRunner(private val bot: TelegramClient) {
                 t("no_results_in_source", lang, sourceName, query)
             }
             val retryToken = CallbackTokenCache.put(Pair(sourceName, query))
-            val keyboard = InlineKeyboardMarkup(
-                listOf(
+            val btnList = mutableListOf<List<InlineKeyboardButton>>()
+            val srcUrl = resolveWebUrl(null, sourceName, query)
+            if (!srcUrl.isNullOrBlank()) {
+                btnList.add(
                     listOf(
                         InlineKeyboardButton(
-                            text = t("btn_search_another_source", lang),
-                            callbackData = "src_another:$queryToken"
+                            text = t("btn_open_website", lang),
+                            url = srcUrl
                         )
-                    ),
-                    listOf(
-                        InlineKeyboardButton(
-                            text = t("btn_retry", lang),
-                            callbackData = "src_retry:$retryToken"
-                        ),
-                        InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                    )
+                )
+            }
+            btnList.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = t("btn_search_another_source", lang),
+                        callbackData = "src_another:$queryToken"
                     )
                 )
             )
-            bot.sendMessage(chatId, msgText, replyMarkup = keyboard)
+            btnList.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = t("btn_retry", lang),
+                        callbackData = "src_retry:$retryToken"
+                    ),
+                    InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+                )
+            )
+            bot.sendMessage(chatId, msgText, replyMarkup = InlineKeyboardMarkup(btnList))
             return
         }
 
@@ -1054,13 +1169,27 @@ class BotRunner(private val bot: TelegramClient) {
         )
         val carToken = CallbackTokenCache.put(carouselRef)
 
-        val extraRows = listOf(
+        val srcUrl = resolveWebUrl(null, sourceName, query)
+        val extraRows = mutableListOf<List<InlineKeyboardButton>>()
+        if (!srcUrl.isNullOrBlank()) {
+            extraRows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = t("btn_open_website", lang),
+                        url = srcUrl
+                    )
+                )
+            )
+        }
+        extraRows.add(
             listOf(
                 InlineKeyboardButton(
                     text = t("btn_search_another_source", lang),
                     callbackData = "src_another:$queryToken"
                 )
-            ),
+            )
+        )
+        extraRows.add(
             listOf(
                 InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
             )
@@ -1305,6 +1434,17 @@ class BotRunner(private val bot: TelegramClient) {
                 "$headerText\n\n${t("feed_no_items", lang)}"
             }
             val retryToken = CallbackTokenCache.put(activeSource)
+            val srcUrl = resolveWebUrl(null, activeSource)
+            if (!srcUrl.isNullOrBlank()) {
+                rows.add(
+                    listOf(
+                        InlineKeyboardButton(
+                            text = t("btn_open_website", lang),
+                            url = srcUrl
+                        )
+                    )
+                )
+            }
             rows.add(
                 listOf(
                     InlineKeyboardButton(
@@ -1359,7 +1499,19 @@ class BotRunner(private val bot: TelegramClient) {
         )
         val carToken = CallbackTokenCache.put(carouselRef)
 
-        val extraRows = listOf(
+        val srcUrl = resolveWebUrl(null, activeSource)
+        val extraRows = mutableListOf<List<InlineKeyboardButton>>()
+        if (!srcUrl.isNullOrBlank()) {
+            extraRows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = t("btn_open_website", lang),
+                        url = srcUrl
+                    )
+                )
+            )
+        }
+        extraRows.add(
             listOf(
                 InlineKeyboardButton(
                     text = if (isPopular) "🔘 ${t("btn_popular", lang)}" else t("btn_popular", lang),
@@ -1369,7 +1521,9 @@ class BotRunner(private val bot: TelegramClient) {
                     text = if (!isPopular) "🔘 ${t("btn_latest", lang)}" else t("btn_latest", lang),
                     callbackData = "feed:latest"
                 )
-            ),
+            )
+        )
+        extraRows.add(
             listOf(
                 InlineKeyboardButton(text = "${t("btn_switch_source", lang)} ($activeSource)", callbackData = "feed_picksrc:$feedType"),
                 InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
@@ -2274,7 +2428,15 @@ class BotRunner(private val bot: TelegramClient) {
                     }.chunked(2)
                     sliderButtons.addAll(actionButtons)
 
-                    // Navigation row: [ 📋 Return to List ] [ ❌ Close ]
+                    // Navigation row: [ 🌐 Open Link ] [ 📋 Return to List ] [ ❌ Close ]
+                    val albumWebUrl = resolveWebUrl(null, ref.sourceName, ref.query)
+                    if (!albumWebUrl.isNullOrBlank()) {
+                        sliderButtons.add(
+                            listOf(
+                                InlineKeyboardButton(text = t("btn_open_website", lang), url = albumWebUrl)
+                            )
+                        )
+                    }
                     sliderButtons.add(
                         listOf(
                             InlineKeyboardButton(text = t("btn_view_list", lang), callbackData = "car_list:$token:0"),
