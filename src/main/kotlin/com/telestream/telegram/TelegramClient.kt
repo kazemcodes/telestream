@@ -22,7 +22,7 @@ class TelegramClient(private val botToken: String) {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
-        encodeDefaults = false
+        encodeDefaults = true
         explicitNulls = false
     }
 
@@ -340,9 +340,15 @@ class TelegramClient(private val botToken: String) {
                 contentType(ContentType.Application.Json)
                 setBody(payload.toString())
             }
-            res.status.isSuccess()
+            if (!res.status.isSuccess()) {
+                val errorBody = res.bodyAsText()
+                logger.error("Error answering inline query $inlineQueryId [HTTP ${res.status.value}]: $errorBody")
+                false
+            } else {
+                true
+            }
         } catch (e: Exception) {
-            logger.error("Error answering inline query $inlineQueryId: ${e.message}")
+            logger.error("Error answering inline query $inlineQueryId: ${e.message}", e)
             false
         }
     }

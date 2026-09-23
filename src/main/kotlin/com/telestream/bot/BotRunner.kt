@@ -7,6 +7,7 @@ import com.telestream.i18n.I18n.t
 import com.telestream.providers.ProviderManager
 import com.telestream.providers.episodes
 import com.telestream.providers.year
+import com.telestream.repo.AggregatedSource
 import com.telestream.repo.CloudStreamRepoManager
 import com.telestream.telegram.*
 import kotlinx.coroutines.*
@@ -158,63 +159,76 @@ class BotRunner(private val bot: TelegramClient) {
             Database.ensureUser(userId)
             val activeSource = Database.getUserSource(userId)
 
-            val isSourceQuery = rawQuery.startsWith("@source", ignoreCase = true) ||
-                    rawQuery.startsWith("#source", ignoreCase = true) ||
-                    rawQuery.startsWith("/source", ignoreCase = true) ||
-                    rawQuery.startsWith("source:", ignoreCase = true)
-
-            val cleanQuery = if (isSourceQuery) {
-                rawQuery.removePrefix("@source")
-                    .removePrefix("#source")
-                    .removePrefix("/source")
-                    .removePrefix("source:")
-                    .trim()
-            } else {
-                rawQuery
-            }
+            val cleanQuery = rawQuery.replaceFirst("(?i)^[@#/]?(sources?|src)[:\\s]*".toRegex(), "").trim()
 
             val allSources = CloudStreamRepoManager.getAllAggregatedSources()
             val filtered = if (cleanQuery.isBlank()) {
                 // If blank, show top active & popular sources first
-                allSources.sortedByDescending { it.name.equals(activeSource, ignoreCase = true) }.take(35)
+                allSources.sortedByDescending { it.name.equals(activeSource, ignoreCase = true) }.take(40)
             } else {
                 allSources.filter { src ->
                     src.name.contains(cleanQuery, ignoreCase = true) ||
                     src.language.contains(cleanQuery, ignoreCase = true) ||
                     src.description?.contains(cleanQuery, ignoreCase = true) == true
-                }.take(35)
+                }.sortedWith(
+                    compareByDescending<AggregatedSource> { it.name.equals(cleanQuery, ignoreCase = true) }
+                        .thenByDescending { it.name.startsWith(cleanQuery, ignoreCase = true) }
+                        .thenByDescending { it.name.contains(cleanQuery, ignoreCase = true) }
+                ).take(40)
             }
 
-            val results = filtered.mapIndexed { idx, src ->
-                val isActive = src.name.equals(activeSource, ignoreCase = true)
-                val statusIcon = if (isActive) "🔘" else "📡"
-                val langTag = "[${src.language.uppercase()}]"
-                val title = "$statusIcon ${src.name} $langTag"
-                val desc = "${if (isActive) "Active Source • " else ""}${src.description ?: "Movies & TV Series"}"
+            val results = if (filtered.isEmpty()) {
+                val isFa = Database.getUserLanguage(userId) == "fa"
+                listOf(
+                    InlineQueryResultArticle(
+                        id = "empty_0",
+                        title = if (isFa) "❌ هیچ سورسی یافت نشد" else "❌ No sources found",
+                        description = if (isFa) "سورس «$cleanQuery» پیدا نشد. برای مشاهده همه سورس‌ها کلیک کنید."
+                                      else "No source found for \"$cleanQuery\". Tap to view all.",
+                        inputMessageContent = InputTextMessageContent(
+                            messageText = "/sources",
+                            parseMode = null
+                        )
+                    )
+                )
+            } else {
+                filtered.mapIndexed { idx, src ->
+                    val isActive = src.name.equals(activeSource, ignoreCase = true)
+                    val statusIcon = if (isActive) "🔘" else "📡"
+                    val langTag = "[${src.language.uppercase()}]"
+                    val title = "$statusIcon ${src.name} $langTag"
+                    val desc = "${if (isActive) "Active Source • " else ""}${src.description ?: "Movies & TV Series"}"
+                    val safeHash = (src.name.hashCode().toLong() and 0xFFFFFFFFL).toString(16)
+                    val token = CallbackTokenCache.put(src.name)
 
-                InlineQueryResultArticle(
-                    id = "src_${src.name}_$idx",
-                    title = title,
-                    description = desc,
-                    inputMessageContent = InputTextMessageContent(
-                        messageText = "/source ${src.name}"
-                    ),
-                    replyMarkup = InlineKeyboardMarkup(
-                        listOf(
+                    InlineQueryResultArticle(
+                        id = "src_${idx}_$safeHash",
+                        title = title,
+                        description = desc,
+                        inputMessageContent = InputTextMessageContent(
+                            messageText = "/source ${src.name}",
+                            parseMode = null
+                        ),
+                        replyMarkup = InlineKeyboardMarkup(
                             listOf(
-                                InlineKeyboardButton(
-                                    text = if (isActive) "🔘 Active: ${src.name}" else "📡 Set Active: ${src.name}",
-                                    callbackData = "src_quick:${src.name}"
+                                listOf(
+                                    InlineKeyboardButton(
+                                        text = if (isActive) "🔘 Active: ${src.name}" else "📡 Set Active: ${src.name}",
+                                        callbackData = "src_quick:$token"
+                                    )
                                 )
                             )
                         )
                     )
-                )
+                }
             }
 
-            bot.answerInlineQuery(inlineQuery.id, results, cacheTime = 1)
+            val ok = bot.answerInlineQuery(inlineQuery.id, results, cacheTime = 1)
+            if (!ok) {
+                logger.warn("answerInlineQuery returned false for query '$rawQuery' (id: ${inlineQuery.id})")
+            }
         } catch (e: Exception) {
-            logger.warn("Error handling inline query: ${e.message}")
+            logger.error("Error handling inline query: ${e.message}", e)
         }
     }
 
@@ -278,17 +292,22 @@ class BotRunner(private val bot: TelegramClient) {
         val activeSource = Database.getUserSource(userId)
         val isAdmin = Config.isAdmin(userId)
 
+        val parts = text.split("\\s+".toRegex(), limit = 2)
+        val rawCmd = parts.getOrNull(0) ?: ""
+        val cmd = rawCmd.lowercase().substringBefore("@")
+        val arg = parts.getOrNull(1)?.trim() ?: ""
+
         when {
-            text.startsWith("/start") -> {
+            cmd == "/start" -> {
                 userSearchPending.remove(userId)
                 bot.sendMessage(chatId, t("welcome", lang), replyMarkup = getMainMenuKeyboard(lang, activeSource, isAdmin))
             }
 
-            text.startsWith("/ping") -> {
+            cmd == "/ping" -> {
                 bot.sendMessage(chatId, "🏓 *Pong!* TeleStream bot is online.")
             }
 
-            text.startsWith("/check_sources") || text.startsWith("/ping_sources") -> {
+            cmd == "/check_sources" || cmd == "/ping_sources" -> {
                 val checkingMsg = if (lang == "fa") "⏳ در حال بررسی وضعیت اتصال به سورس‌ها..." else "⏳ Checking sources connectivity..."
                 bot.sendMessage(chatId, checkingMsg)
                 val enabled = Database.getEnabledSources(userId)
@@ -316,31 +335,34 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.sendMessage(chatId, sb.toString())
             }
 
-            text.startsWith("/popular") -> {
+            cmd == "/popular" -> {
                 showFeedScreen(chatId, userId, lang, "popular")
             }
 
-            text.startsWith("/latest") -> {
+            cmd == "/latest" -> {
                 showFeedScreen(chatId, userId, lang, "latest")
             }
 
-            text.startsWith("/sources") || text.startsWith("/manage_sources") || text.startsWith("/enabled_sources") -> {
+            cmd == "/sources" || cmd == "/manage_sources" || cmd == "/enabled_sources" -> {
                 userSourceFilterPending.remove(userId)
                 showSourcesManager(chatId, userId, lang)
             }
 
-            text.startsWith("/source") || text.startsWith("/src") -> {
+            cmd == "/source" || cmd == "/src" -> {
                 userSourceFilterPending.remove(userId)
-                val query = text.removePrefix("/source").removePrefix("/src").trim()
-                if (query.isBlank()) {
+                if (arg.isBlank()) {
                     showSourcesManager(chatId, userId, lang)
                 } else {
                     val allSources = CloudStreamRepoManager.getAllAggregatedSources()
                     val matches = allSources.filter {
-                        it.name.contains(query, ignoreCase = true) ||
-                        it.language.contains(query, ignoreCase = true) ||
-                        it.description?.contains(query, ignoreCase = true) == true
-                    }
+                        it.name.contains(arg, ignoreCase = true) ||
+                        it.language.contains(arg, ignoreCase = true) ||
+                        it.description?.contains(arg, ignoreCase = true) == true
+                    }.sortedWith(
+                        compareByDescending<AggregatedSource> { it.name.equals(arg, ignoreCase = true) }
+                            .thenByDescending { it.name.startsWith(arg, ignoreCase = true) }
+                            .thenByDescending { it.name.contains(arg, ignoreCase = true) }
+                    )
                     if (matches.size == 1) {
                         val matched = matches.first()
                         Database.setUserSource(userId, matched.name)
@@ -350,24 +372,23 @@ class BotRunner(private val bot: TelegramClient) {
                             replyMarkup = getMainMenuKeyboard(lang, matched.name, isAdmin)
                         )
                     } else if (matches.isNotEmpty()) {
-                        showSourcesManager(chatId, userId, lang, filterLang = "all", page = 0, query = query)
+                        showSourcesManager(chatId, userId, lang, filterLang = "all", page = 0, query = arg)
                     } else {
-                        bot.sendMessage(chatId, t("no_sources_found", lang, query))
+                        bot.sendMessage(chatId, t("no_sources_found", lang, arg))
                     }
                 }
             }
 
-            text.startsWith("/search") -> {
+            cmd == "/search" -> {
                 userSourceFilterPending.remove(userId)
-                val query = text.removePrefix("/search").trim()
-                if (query.isBlank()) {
+                if (arg.isBlank()) {
                     bot.sendMessage(chatId, t("search_prompt_direct", lang, activeSource))
                 } else {
-                    executeSearch(chatId, userId, lang, activeSource, query)
+                    executeSearch(chatId, userId, lang, activeSource, arg)
                 }
             }
 
-            text.startsWith("/app") -> {
+            cmd == "/app" -> {
                 val webAppUrl = Config.webAppUrl
                 if (webAppUrl.startsWith("https://")) {
                     val keyboard = InlineKeyboardMarkup(
@@ -395,11 +416,11 @@ class BotRunner(private val bot: TelegramClient) {
                 }
             }
 
-            text.startsWith("/donate") -> {
+            cmd == "/donate" -> {
                 showDonationMessage(chatId, lang)
             }
 
-            text.startsWith("/admin") -> {
+            cmd == "/admin" -> {
                 if (!Config.isAdmin(userId)) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                 } else {
@@ -407,13 +428,12 @@ class BotRunner(private val bot: TelegramClient) {
                 }
             }
 
-            text.startsWith("/nsfw") -> {
+            cmd == "/nsfw" -> {
                 if (!Config.isAdmin(userId)) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                     return
                 }
-                val arg = text.removePrefix("/nsfw").trim().lowercase()
-                val newStatus = when (arg) {
+                val newStatus = when (arg.lowercase()) {
                     "on", "enable", "1", "true" -> true
                     "off", "disable", "0", "false" -> false
                     else -> !Database.isNsfwEnabled()
@@ -423,7 +443,7 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.sendMessage(chatId, t("nsfw_toggled", lang, statusStr))
             }
 
-            text.startsWith("/repos") -> {
+            cmd == "/repos" -> {
                 if (!isAdmin) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                 } else {
@@ -431,7 +451,7 @@ class BotRunner(private val bot: TelegramClient) {
                 }
             }
 
-            text.startsWith("/sync") -> {
+            cmd == "/sync" -> {
                 if (!isAdmin) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                     return
@@ -442,30 +462,29 @@ class BotRunner(private val bot: TelegramClient) {
                 bot.sendMessage(chatId, t("sync_done", lang, totalPlugins, repos.size))
             }
 
-            text.startsWith("/addrepo") -> {
+            cmd == "/addrepo" -> {
                 if (!isAdmin) {
                     bot.sendMessage(chatId, t("admin_only", lang))
                     return
                 }
-                val url = text.removePrefix("/addrepo").trim()
-                if (url.isBlank()) {
+                if (arg.isBlank()) {
                     bot.sendMessage(chatId, "⚠️ Usage: `/addrepo <url>` (e.g., `https://example.com/repo.json`)")
                 } else {
-                    bot.sendMessage(chatId, "⏳ Fetching repository from `$url`...")
-                    val repo = CloudStreamRepoManager.fetchRepository(url)
+                    bot.sendMessage(chatId, "⏳ Fetching repository from `$arg`...")
+                    val repo = CloudStreamRepoManager.fetchRepository(arg)
                     if (repo != null) {
                         bot.sendMessage(chatId, "✅ Added repository *${repo.name}* with *${repo.pluginsCount}* plugins!")
                     } else {
-                        bot.sendMessage(chatId, "❌ Failed to fetch repository from `$url`.")
+                        bot.sendMessage(chatId, "❌ Failed to fetch repository from `$arg`.")
                     }
                 }
             }
 
-            text.startsWith("/language") -> {
+            cmd == "/language" -> {
                 showLanguageSelector(chatId, lang)
             }
 
-            text.startsWith("/bookmarks") -> {
+            cmd == "/bookmarks" -> {
                 showBookmarks(chatId, userId, lang)
             }
 
@@ -768,7 +787,11 @@ class BotRunner(private val bot: TelegramClient) {
                 src.name.contains(q, ignoreCase = true) ||
                 src.language.contains(q, ignoreCase = true) ||
                 src.description?.contains(q, ignoreCase = true) == true
-            }
+            }.sortedWith(
+                compareByDescending<AggregatedSource> { it.name.equals(q, ignoreCase = true) }
+                    .thenByDescending { it.name.startsWith(q, ignoreCase = true) }
+                    .thenByDescending { it.name.contains(q, ignoreCase = true) }
+            )
         } else {
             allSources
         }
@@ -785,7 +808,7 @@ class BotRunner(private val bot: TelegramClient) {
             listOf(
                 InlineKeyboardButton(
                     text = t("btn_live_search", lang),
-                    switchInlineQueryCurrentChat = "@source "
+                    switchInlineQueryCurrentChat = ""
                 ),
                 InlineKeyboardButton(
                     text = t("btn_search_source", lang),
@@ -1259,7 +1282,8 @@ class BotRunner(private val bot: TelegramClient) {
             }
 
             data.startsWith("src_quick:") -> {
-                val srcName = data.removePrefix("src_quick:")
+                val raw = data.removePrefix("src_quick:")
+                val srcName = CallbackTokenCache.get<String>(raw) ?: raw
                 Database.setUserSource(userId, srcName)
                 val langTag = CloudStreamRepoManager.getAllAggregatedSources().find { it.name.equals(srcName, ignoreCase = true) }?.language?.uppercase() ?: "ALL"
                 bot.answerCallbackQuery(callback.id, t("source_selected", lang, srcName))

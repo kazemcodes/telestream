@@ -57,4 +57,89 @@ class SourceSearchTest {
         Database.setUserSource(testUserId, "AvaMovie")
         assertEquals("AvaMovie", Database.getUserSource(testUserId))
     }
+
+    @Test
+    fun testCaseInsensitiveCommandParsing() {
+        val testInputs = listOf(
+            "/SEARCH Avatar" to Pair("/search", "Avatar"),
+            "/search avatar" to Pair("/search", "avatar"),
+            "/Search@TeleStreamBot Inception" to Pair("/search", "Inception"),
+            "/SOURCE Kiss" to Pair("/source", "Kiss"),
+            "/Src@MyBot Ava" to Pair("/src", "Ava"),
+            "/START" to Pair("/start", "")
+        )
+
+        for ((input, expected) in testInputs) {
+            val parts = input.split("\\s+".toRegex(), limit = 2)
+            val rawCmd = parts.getOrNull(0) ?: ""
+            val cmd = rawCmd.lowercase().substringBefore("@")
+            val arg = parts.getOrNull(1)?.trim() ?: ""
+
+            assertEquals(expected.first, cmd)
+            assertEquals(expected.second, arg)
+        }
+    }
+
+    @Test
+    fun testCaseInsensitiveInlineQueryPrefixStripping() {
+        val queries = listOf(
+            "@source anime" to "anime",
+            "@sources anime" to "anime",
+            "@Source Anime" to "Anime",
+            "@Sources Anime" to "Anime",
+            "@SOURCE KISS" to "KISS",
+            "@SOURCES KISS" to "KISS",
+            "#source Drama" to "Drama",
+            "/source Movie" to "Movie",
+            "/sources Movie" to "Movie",
+            "/SRC avatar" to "avatar",
+            "@src action" to "action",
+            "source: comedy" to "comedy",
+            "sources: thriller" to "thriller",
+            "just query" to "just query",
+            "" to ""
+        )
+
+        val prefixRegex = "(?i)^[@#/]?(sources?|src)[:\\s]*".toRegex()
+        for ((raw, expected) in queries) {
+            val clean = raw.replaceFirst(prefixRegex, "").trim()
+            assertEquals(expected, clean)
+        }
+    }
+
+    @Test
+    fun testInlineQueryResultSerialization() {
+        val json = kotlinx.serialization.json.Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+            explicitNulls = false
+        }
+
+        val article = com.telestream.telegram.InlineQueryResultArticle(
+            id = "src_0_abcd1234",
+            title = "🔘 KissKH [EN]",
+            description = "Active Source • Drama & Movies",
+            inputMessageContent = com.telestream.telegram.InputTextMessageContent(
+                messageText = "/source KissKH"
+            )
+        )
+
+        val jsonStr = json.encodeToString(com.telestream.telegram.InlineQueryResultArticle.serializer(), article)
+        println("Serialized InlineQueryResultArticle: $jsonStr")
+
+        // Crucial: Must contain "type":"article" for Telegram Bot API
+        assertTrue(jsonStr.contains("\"type\":\"article\""), "JSON must include type: 'article' for Telegram API")
+        // Crucial: Must not fail with parse_mode for non-markdown commands
+        assertTrue(!jsonStr.contains("\"parse_mode\""), "parse_mode should be omitted when null")
+        // Crucial: id length must be <= 64 bytes
+        assertTrue(article.id.toByteArray().size <= 64)
+    }
+
+    @Test
+    fun testRepoManagerAggregatedSourcesNotEmpty() {
+        val sources = CloudStreamRepoManager.getAllAggregatedSources()
+        println("Aggregated sources count: ${sources.size}")
+        assertTrue(sources.isNotEmpty())
+    }
 }

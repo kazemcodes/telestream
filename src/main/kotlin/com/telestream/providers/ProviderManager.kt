@@ -159,7 +159,15 @@ object ProviderManager {
 
         clearLastError(provider.name)
         val results = try {
-            (provider.search(trimmedQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
+            var list = (provider.search(trimmedQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
+            if (list.isEmpty() && trimmedQuery.any { it.isUpperCase() }) {
+                val lowerQuery = trimmedQuery.lowercase()
+                val lowerList = (provider.search(lowerQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
+                if (lowerList.isNotEmpty()) {
+                    list = lowerList
+                }
+            }
+            list
         } catch (e: Throwable) {
             val err = classifyError(e)
             lastErrors[provider.name.lowercase()] = err

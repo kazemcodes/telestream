@@ -34,13 +34,13 @@ data class InlineQueryResultArticle(
     @SerialName("input_message_content") val inputMessageContent: InputTextMessageContent,
     @SerialName("reply_markup") val replyMarkup: InlineKeyboardMarkup? = null,
     val description: String? = null,
-    @SerialName("thumb_url") val thumbUrl: String? = null
+    @SerialName("thumbnail_url") val thumbnailUrl: String? = null
 )
 
 @Serializable
 data class InputTextMessageContent(
     @SerialName("message_text") val messageText: String,
-    @SerialName("parse_mode") val parseMode: String = "Markdown"
+    @SerialName("parse_mode") val parseMode: String? = null
 )
 
 @Serializable
