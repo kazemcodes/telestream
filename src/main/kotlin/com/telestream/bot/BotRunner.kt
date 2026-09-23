@@ -1,10 +1,12 @@
 package com.telestream.bot
 
-import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.*
 import com.telestream.config.Config
 import com.telestream.database.Database
 import com.telestream.i18n.I18n.t
 import com.telestream.providers.ProviderManager
+import com.telestream.providers.episodes
+import com.telestream.providers.year
 import com.telestream.repo.CloudStreamRepoManager
 import com.telestream.telegram.CallbackQuery
 import com.telestream.telegram.InlineKeyboardButton
@@ -1214,7 +1216,7 @@ class BotRunner(private val bot: TelegramClient) {
                     lang,
                     details.name,
                     details.year?.toString() ?: "N/A",
-                    details.rating?.toString() ?: "N/A",
+                    details.score?.toInt(100)?.let { "${it / 10.0}" } ?: "N/A",
                     details.type.name,
                     details.apiName,
                     (details.plot ?: "N/A").take(350)
@@ -1223,7 +1225,7 @@ class BotRunner(private val bot: TelegramClient) {
                 val buttons = mutableListOf<List<InlineKeyboardButton>>()
                 val episodes = details.episodes ?: emptyList()
 
-                if (details.type == TvType.TvSeries && episodes.isNotEmpty()) {
+                if ((details.type == TvType.TvSeries || details.type == TvType.Anime) && episodes.isNotEmpty()) {
                     buttons.add(
                         listOf(
                             InlineKeyboardButton(
@@ -1233,8 +1235,9 @@ class BotRunner(private val bot: TelegramClient) {
                         )
                     )
                 } else {
+                    val mediaData = (details as? MovieLoadResponse)?.dataUrl ?: ref.url
                     val epToken = CallbackTokenCache.put(
-                        EpisodeRef(ref.provider, token, ref.url, details.name, 0)
+                        EpisodeRef(ref.provider, token, mediaData, details.name, 0)
                     )
                     buttons.add(
                         listOf(

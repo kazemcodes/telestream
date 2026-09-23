@@ -60,4 +60,20 @@ class CloudStreamPluginLoaderTest {
             println("Successfully verified StreamPlay-Anime: ${animeProvider.name}")
         }
     }
+
+    @Test
+    fun testLoadXDMoviesPlugin() {
+        val xdMoviesCs3 = File("data/plugins_cache/XDMovies.cs3")
+        if (xdMoviesCs3.exists()) {
+            val metadata = PluginMetadata(
+                name = "XDMovies",
+                internalName = "XDMovies",
+                url = "local",
+                repositoryName = "local"
+            )
+            val provider = CloudStreamPluginLoader.loadPlugin(metadata)
+            assertNotNull(provider, "XDMovies should load successfully without NoSuchMethodError: base64Decode")
+            println("Successfully loaded XDMovies provider: ${provider.name} (${provider.mainUrl})")
+        }
+    }
 }

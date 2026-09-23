@@ -108,7 +108,7 @@ class Dex2JarTest {
         // Test running real search!
         kotlinx.coroutines.runBlocking {
             try {
-                val searchResults = kisskh.search("solo leveling")
+                val searchResults = kisskh.search("solo leveling") ?: emptyList()
                 println("Search returned ${searchResults.size} results:")
                 for (r in searchResults.take(5)) {
                     println(" - ${r.name} (${r.url}) [poster=${r.posterUrl}]")

@@ -176,9 +176,13 @@ object CloudStreamPluginLoader {
             val simulatedContext = SimulatedContext(customClassLoader = cl)
             pluginInstance.load(simulatedContext)
 
+            val cleanMetaName = metadata.name.replace(" ", "")
+            val cleanInternalName = metadata.internalName?.replace(" ", "")
             val provider = ProviderManager.providers.firstOrNull {
                 it.name.equals(metadata.name, ignoreCase = true) ||
+                it.name.replace(" ", "").equals(cleanMetaName, ignoreCase = true) ||
                 it.name.equals(metadata.internalName, ignoreCase = true) ||
+                it.name.replace(" ", "").equals(cleanInternalName, ignoreCase = true) ||
                 (it.sourcePlugin != null && it.sourcePlugin.equals(pluginClassName, ignoreCase = true))
             } ?: ProviderManager.providers.lastOrNull()
             if (provider != null) {

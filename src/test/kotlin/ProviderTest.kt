@@ -1,6 +1,6 @@
 package com.telestream
 
-import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.*
 import com.telestream.database.Database
 import com.telestream.providers.ProviderManager
 import org.junit.jupiter.api.Test
@@ -51,7 +51,7 @@ class ProviderTest {
         kotlin.test.assertNotNull(ProviderManager.getProvider("AdultTestProvider"))
 
         Database.setNsfwEnabled(false)
-        ProviderManager.providers.remove(nsfwProvider)
+        ProviderManager.remove(nsfwProvider)
     }
 
     @Test
@@ -85,7 +85,7 @@ class ProviderTest {
         val animeProviders = ProviderManager.getProvidersByFilter("anime")
         assertTrue(animeProviders.any { it.name == "AnimeTest" })
 
-        ProviderManager.providers.removeAll(listOf(p1, p2, p3))
+        ProviderManager.removeAll(listOf(p1, p2, p3))
     }
 
     @Test
@@ -175,11 +175,18 @@ class ProviderTest {
         val p = object : com.lagradost.cloudstream3.MainAPI() {
             override var name = "FeedProvider"
             override var mainUrl = "https://feed.example.com"
-            override suspend fun getPopular(page: Int): List<com.lagradost.cloudstream3.SearchResponse> {
-                return listOf(com.lagradost.cloudstream3.MovieSearchResponse("Popular 1", "https://url1", name, TvType.Movie, null, null))
-            }
-            override suspend fun getLatest(page: Int): List<com.lagradost.cloudstream3.SearchResponse> {
-                return listOf(com.lagradost.cloudstream3.MovieSearchResponse("Latest 1", "https://url2", name, TvType.Movie, null, null))
+            override val hasMainPage = true
+            override val mainPage = listOf(
+                com.lagradost.cloudstream3.MainPageData("Popular Movies", "https://feed.example.com/popular"),
+                com.lagradost.cloudstream3.MainPageData("Latest Movies", "https://feed.example.com/latest")
+            )
+            override suspend fun getMainPage(page: Int, request: com.lagradost.cloudstream3.MainPageRequest): com.lagradost.cloudstream3.HomePageResponse {
+                val list = if (request.name.contains("Popular")) {
+                    listOf(newMovieSearchResponse("Popular 1", "https://url1"))
+                } else {
+                    listOf(newMovieSearchResponse("Latest 1", "https://url2"))
+                }
+                return com.lagradost.cloudstream3.newHomePageResponse(request.name, list)
             }
         }
         ProviderManager.register(p)
@@ -197,6 +204,6 @@ class ProviderTest {
             assertTrue(nonExistent.isEmpty())
         }
 
-        ProviderManager.providers.remove(p)
+        ProviderManager.remove(p)
     }
 }

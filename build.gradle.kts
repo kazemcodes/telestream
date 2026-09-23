@@ -7,14 +7,20 @@ plugins {
 group = "com.telestream"
 version = "1.0.0"
 
-repositories {
-    mavenCentral()
-    google()
+allprojects {
+    repositories {
+        mavenCentral()
+        google()
+    }
 }
 
 val ktorVersion = "3.0.1"
 
 dependencies {
+    // Android Compatibility & Full CloudStream Library
+    implementation(project(":android-compat"))
+    implementation(project(":cloudstream3"))
+
     // Kotlin & Coroutines
     implementation(kotlin("stdlib"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
@@ -36,6 +42,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.1")
     implementation("org.json:json:20240303")
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // SQLite Persistence
     implementation("org.xerial:sqlite-jdbc:3.47.0.0")

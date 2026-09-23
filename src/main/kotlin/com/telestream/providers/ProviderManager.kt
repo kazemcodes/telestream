@@ -1,14 +1,44 @@
 package com.telestream.providers
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.telestream.database.Database
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.ConcurrentHashMap
 
+val MainAPI.isNsfw: Boolean get() = this.supportedTypes.contains(TvType.NSFW)
+
+val LoadResponse.episodes: List<Episode>?
+    get() = when (this) {
+        is TvSeriesLoadResponse -> this.episodes
+        is AnimeLoadResponse -> this.episodes.values.flatten()
+        else -> null
+    }
+
+val SearchResponse.year: Int?
+    get() = when (this) {
+        is MovieSearchResponse -> this.year
+        is TvSeriesSearchResponse -> this.year
+        is AnimeSearchResponse -> this.year
+        else -> null
+    }
+
 object ProviderManager {
-    val providers = mutableListOf<MainAPI>()
+    private val customProviders = java.util.concurrent.CopyOnWriteArrayList<MainAPI>()
+
+    val providers: List<MainAPI>
+        get() {
+            val list = mutableListOf<MainAPI>()
+            list.addAll(customProviders)
+            for (p in APIHolder.allProviders) {
+                if (!list.contains(p)) {
+                    list.add(p)
+                }
+            }
+            return list
+        }
 
     // Thread-safe in-memory cache
     private val searchCache = ConcurrentHashMap<String, List<SearchResponse>>()
@@ -20,12 +50,32 @@ object ProviderManager {
     }
 
     fun register(provider: MainAPI) {
-        providers.add(provider)
+        if (!customProviders.contains(provider)) {
+            customProviders.add(provider)
+        }
+        if (!APIHolder.allProviders.contains(provider)) {
+            APIHolder.allProviders.add(provider)
+        }
+    }
+
+    fun unregister(provider: MainAPI) {
+        customProviders.remove(provider)
+        try {
+            APIHolder.allProviders.remove(provider)
+        } catch (_: Throwable) {}
+    }
+
+    fun remove(provider: MainAPI) = unregister(provider)
+
+    fun removeAll(providers: Collection<MainAPI>) {
+        providers.forEach { unregister(it) }
     }
 
     fun getProvider(name: String): MainAPI? {
+        val cleanName = name.replace(" ", "")
         var p = providers.firstOrNull { 
             it.name.equals(name, ignoreCase = true) ||
+            it.name.replace(" ", "").equals(cleanName, ignoreCase = true) ||
             it.name.startsWith(name, ignoreCase = true) ||
             name.startsWith(it.name, ignoreCase = true)
         }
@@ -36,6 +86,7 @@ object ProviderManager {
                 if (p?.name?.equals(name, ignoreCase = true) != true) {
                     p = providers.firstOrNull {
                         it.name.equals(name, ignoreCase = true) ||
+                        it.name.replace(" ", "").equals(cleanName, ignoreCase = true) ||
                         it.name.startsWith(name, ignoreCase = true) ||
                         name.startsWith(it.name, ignoreCase = true)
                     } ?: p
@@ -77,7 +128,7 @@ object ProviderManager {
         searchCache[cacheKey]?.let { return it }
 
         val results = try {
-            provider.search(trimmedQuery).filter { it.type != TvType.NSFW || nsfwAllowed }
+            (provider.search(trimmedQuery) ?: emptyList()).filter { it.type != TvType.NSFW || nsfwAllowed }
         } catch (e: Exception) {
             emptyList()
         }
@@ -93,7 +144,20 @@ object ProviderManager {
         popularCache[cacheKey]?.let { return it }
 
         val results = try {
-            provider.getPopular(page).filter { it.type != TvType.NSFW || nsfwAllowed }
+            val section = provider.mainPage.firstOrNull {
+                it.name.contains("popular", ignoreCase = true) ||
+                it.name.contains("trending", ignoreCase = true) ||
+                it.name.contains("top", ignoreCase = true) ||
+                it.name.contains("hot", ignoreCase = true)
+            } ?: provider.mainPage.firstOrNull()
+
+            val list = if (section != null) {
+                val req = MainPageRequest(section.name, section.data, section.horizontalImages)
+                provider.getMainPage(page, req)?.items?.flatMap { it.list } ?: emptyList()
+            } else {
+                emptyList()
+            }
+            list.filter { it.type != TvType.NSFW || nsfwAllowed }
         } catch (e: Exception) {
             emptyList()
         }
@@ -110,7 +174,20 @@ object ProviderManager {
         latestCache[cacheKey]?.let { return it }
 
         val results = try {
-            provider.getLatest(page).filter { it.type != TvType.NSFW || nsfwAllowed }
+            val section = provider.mainPage.firstOrNull {
+                it.name.contains("latest", ignoreCase = true) ||
+                it.name.contains("recent", ignoreCase = true) ||
+                it.name.contains("new", ignoreCase = true) ||
+                it.name.contains("updated", ignoreCase = true)
+            } ?: provider.mainPage.getOrNull(1) ?: provider.mainPage.firstOrNull()
+
+            val list = if (section != null) {
+                val req = MainPageRequest(section.name, section.data, section.horizontalImages)
+                provider.getMainPage(page, req)?.items?.flatMap { it.list } ?: emptyList()
+            } else {
+                emptyList()
+            }
+            list.filter { it.type != TvType.NSFW || nsfwAllowed }
         } catch (e: Exception) {
             emptyList()
         }
@@ -146,7 +223,7 @@ object ProviderManager {
         val provider = getProvider(providerName) ?: return emptyList()
         val links = mutableListOf<ExtractorLink>()
         try {
-            provider.loadLinks(data) { link ->
+            provider.loadLinks(data, isCasting = false, subtitleCallback = {}) { link ->
                 links.add(link)
             }
         } catch (e: Exception) {
