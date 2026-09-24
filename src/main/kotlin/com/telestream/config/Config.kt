@@ -56,9 +56,10 @@ object Config {
     }
 
     // Public WebApp URL (supports Hugging Face SPACE_HOST or custom domain)
-    val webAppUrl: String = get("WEBAPP_URL")
-        ?: get("SPACE_HOST")?.let { "https://$it" }
-        ?: "http://localhost:$port"
+    val webAppUrl: String = get("WEBAPP_URL")?.let {
+        if (it.endsWith("/webapp")) it else "${it.trimEnd('/')}/webapp"
+    } ?: get("SPACE_HOST")?.let { "https://$it/webapp" }
+      ?: "http://localhost:$port/webapp"
 
     // Admin user IDs (comma separated, e.g. "12345678,87654321")
     val adminIds: Set<Long> = get("ADMIN_IDS")

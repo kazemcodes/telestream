@@ -77,6 +77,15 @@ fun main(): Unit {
                     call.respondText("Link expired or invalid", status = HttpStatusCode.NotFound)
                 }
             }
+            get("/webapp/r/{token}") {
+                val token = call.parameters["token"]
+                val targetUrl = token?.let { com.telestream.bot.model.CallbackTokenCache.get<String>(it) }
+                if (!targetUrl.isNullOrBlank()) {
+                    call.respondRedirect(targetUrl, permanent = false)
+                } else {
+                    call.respondText("Link expired or invalid", status = HttpStatusCode.NotFound)
+                }
+            }
 
             // CORS preflight
             options("{...}") {

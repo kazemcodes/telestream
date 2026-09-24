@@ -24,3 +24,5 @@ graphify-out/
 .DS_Store
 Thumbs.db
 sample/
+__pycache__/
+*.pyc

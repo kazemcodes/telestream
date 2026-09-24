@@ -25,7 +25,7 @@ object UrlSanitizer {
         if (sanitized.length <= 500) {
             return sanitized
         }
-        val base = com.telestream.config.Config.webAppUrl.trimEnd('/')
+        val base = com.telestream.config.Config.webAppUrl.removeSuffix("/webapp").trimEnd('/')
         if (base.isNotBlank() && (base.startsWith("http://", ignoreCase = true) || base.startsWith("https://", ignoreCase = true))) {
             val token = com.telestream.bot.model.CallbackTokenCache.put(sanitized)
             return "$base/r/$token"
