@@ -9,10 +9,9 @@ if hasattr(sys.stderr, "reconfigure"):
 
 import subprocess
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 import gradio as gr
-import uvicorn
 
 # Support Hugging Face ZeroGPU if assigned
 try:
@@ -47,7 +46,7 @@ def start_bot():
     if jar_path and os.path.exists(jar_path):
         print(f"🚀 Launching TeleStream JAR: {jar_path}")
         env = os.environ.copy()
-        # TeleStream internal Ktor server on 8080 so Gradio/FastAPI on 7860 has zero port conflict
+        # TeleStream internal Ktor server on 8080 so Gradio on 7860 has zero port conflict
         env["PORT"] = "8080"
 
         # Ensure cache directories exist
@@ -74,99 +73,10 @@ def get_status():
         return f"🟢 TeleStream is ACTIVE (PID: {bot_process.pid})"
     return "🔴 TeleStream process is stopped"
 
-# Initialize FastAPI application
-app = FastAPI(title="TeleStream Bot & Mini App Server")
-
-# 1. Telegram Mini App HTML Endpoint
-@app.get("/webapp", response_class=HTMLResponse)
-async def serve_webapp():
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.get(f"{KTOR_INTERNAL_URL}/webapp", timeout=12.0)
-            return HTMLResponse(content=res.text, status_code=res.status_code)
-        except Exception as e:
-            return HTMLResponse(
-                content=f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <meta http-equiv="refresh" content="3">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>TeleStream Starting...</title>
-                    <style>
-                        body {{ background: #07090e; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }}
-                        .spinner {{ width: 44px; height: 44px; border: 4px solid rgba(99,102,241,0.2); border-top-color: #6366f1; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }}
-                        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-                    </style>
-                </head>
-                <body>
-                    <div class="spinner"></div>
-                    <h2>🎬 TeleStream در حال راه‌اندازی...</h2>
-                    <p style="color: #94a3b8; font-size: 0.9rem;">ربات در حال آماده‌سازی و بارگذاری افزونه‌ها است. صفحه خودکار بارگذاری خواهد شد...</p>
-                </body>
-                </html>
-                """,
-                status_code=503
-            )
-
-# 2. Reverse Proxy for Ktor API Endpoints
-@app.api_route("/api/{path:path}", methods=["GET", "POST", "OPTIONS"])
-async def proxy_api(request: Request, path: str):
-    async with httpx.AsyncClient() as client:
-        try:
-            url = f"{KTOR_INTERNAL_URL}/api/{path}"
-            if request.url.query:
-                url += f"?{request.url.query}"
-            body = await request.body()
-            res = await client.request(
-                method=request.method,
-                url=url,
-                content=body,
-                headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length"]},
-                timeout=45.0
-            )
-            return Response(
-                content=res.content,
-                status_code=res.status_code,
-                headers=dict(res.headers),
-                media_type=res.headers.get("content-type")
-            )
-        except Exception as e:
-            return Response(
-                content=f'{{"error":"Internal gateway error: {e}"}}',
-                status_code=502,
-                media_type="application/json"
-            )
-
-# 3. Stream Short Redirect Proxy
-@app.get("/r/{token}")
-@app.get("/webapp/r/{token}")
-async def proxy_redirect(token: str):
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.get(f"{KTOR_INTERNAL_URL}/r/{token}", follow_redirects=False, timeout=10.0)
-            target = res.headers.get("Location")
-            if target:
-                return RedirectResponse(target)
-            return Response(content=res.content, status_code=res.status_code)
-        except Exception as e:
-            return Response(content=f"Redirect error: {e}", status_code=500)
-
-# 4. Container Health Check Endpoint
-@app.get("/health")
-async def health_check():
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.get(f"{KTOR_INTERNAL_URL}/health", timeout=4.0)
-            return Response(content=res.content, status_code=res.status_code, media_type="application/json")
-        except Exception:
-            return {"status": "starting", "gradio": "healthy"}
-
 # Start bot process on space startup
 start_bot()
 
-# 5. Gradio Web Interface
+# 1. Gradio Web Interface
 with gr.Blocks(title="TeleStream Bot & WebApp") as demo:
     gr.Markdown("""
     # 🎬 TeleStream: Native CloudStream Telegram Bot & Mini App
@@ -223,13 +133,94 @@ with gr.Blocks(title="TeleStream Bot & WebApp") as demo:
             * **پروتکل‌ها:** HLS (m3u8), DoH (DNS over HTTPS), ASM Bytecode Shims
             """)
 
-    # Hidden element for ZeroGPU compatibility
+    # Required element to satisfy Hugging Face ZeroGPU scanner
     dummy_btn = gr.Button("GPU Check", visible=False)
     dummy_output = gr.Textbox(visible=False)
     dummy_btn.click(gpu_handler, outputs=dummy_output)
 
-# Mount Gradio onto FastAPI root
-app = gr.mount_gradio_app(app, demo, path="/")
+# 2. Attach FastAPI Proxy Routes directly to demo.app (Gradio's underlying FastAPI instance)
+@demo.app.get("/webapp", response_class=HTMLResponse)
+async def serve_webapp():
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(f"{KTOR_INTERNAL_URL}/webapp", timeout=12.0)
+            return HTMLResponse(content=res.text, status_code=res.status_code)
+        except Exception as e:
+            return HTMLResponse(
+                content=f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <meta http-equiv="refresh" content="3">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>TeleStream Starting...</title>
+                    <style>
+                        body {{ background: #07090e; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }}
+                        .spinner {{ width: 44px; height: 44px; border: 4px solid rgba(99,102,241,0.2); border-top-color: #6366f1; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }}
+                        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+                    </style>
+                </head>
+                <body>
+                    <div class="spinner"></div>
+                    <h2>🎬 TeleStream در حال راه‌اندازی...</h2>
+                    <p style="color: #94a3b8; font-size: 0.9rem;">ربات در حال آماده‌سازی و بارگذاری افزونه‌ها است. صفحه خودکار بارگذاری خواهد شد...</p>
+                </body>
+                </html>
+                """,
+                status_code=503
+            )
+
+@demo.app.api_route("/api/{path:path}", methods=["GET", "POST", "OPTIONS"])
+async def proxy_api(request: Request, path: str):
+    async with httpx.AsyncClient() as client:
+        try:
+            url = f"{KTOR_INTERNAL_URL}/api/{path}"
+            if request.url.query:
+                url += f"?{request.url.query}"
+            body = await request.body()
+            res = await client.request(
+                method=request.method,
+                url=url,
+                content=body,
+                headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length"]},
+                timeout=45.0
+            )
+            return Response(
+                content=res.content,
+                status_code=res.status_code,
+                headers=dict(res.headers),
+                media_type=res.headers.get("content-type")
+            )
+        except Exception as e:
+            return Response(
+                content=f'{{"error":"Internal gateway error: {e}"}}',
+                status_code=502,
+                media_type="application/json"
+            )
+
+@demo.app.get("/r/{token}")
+@demo.app.get("/webapp/r/{token}")
+async def proxy_redirect(token: str):
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(f"{KTOR_INTERNAL_URL}/r/{token}", follow_redirects=False, timeout=10.0)
+            target = res.headers.get("Location")
+            if target:
+                return RedirectResponse(target)
+            return Response(content=res.content, status_code=res.status_code)
+        except Exception as e:
+            return Response(content=f"Redirect error: {e}", status_code=500)
+
+@demo.app.get("/health")
+async def health_check():
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(f"{KTOR_INTERNAL_URL}/health", timeout=4.0)
+            return Response(content=res.content, status_code=res.status_code, media_type="application/json")
+        except Exception:
+            return {"status": "starting", "gradio": "healthy"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+    port = int(os.environ.get("PORT", 7860))
+    demo.launch(server_name="0.0.0.0", server_port=port)
