@@ -309,6 +309,7 @@ fun main(): Unit {
                     BotCommand("search", "🔍 Search Movies & Series"),
                     BotCommand("sources", "📡 Movie & Series Sources"),
                     BotCommand("bookmarks", "⭐ Saved Bookmarks"),
+                    BotCommand("help", "💡 User Guide & Help"),
                     BotCommand("language", "🌐 Change Language / تغییر زبان"),
                     BotCommand("check_sources", "🩺 Check Sources Health & Status"),
                     BotCommand("ping", "🏓 Check Bot Status")
@@ -325,6 +326,7 @@ fun main(): Unit {
                     BotCommand("search", "🔍 جستجوی فیلم و سریال"),
                     BotCommand("sources", "📡 منابع و سورس‌های فیلم و سریال"),
                     BotCommand("bookmarks", "⭐ فیلم‌ها و سریال‌های نشان‌شده"),
+                    BotCommand("help", "💡 راهنمای جامع و دستورات ربات"),
                     BotCommand("language", "🌐 تغییر زبان / Change Language"),
                     BotCommand("check_sources", "🩺 تست سلامت و اتصال سورس‌ها"),
                     BotCommand("ping", "🏓 وضعیت آنلاین ربات")

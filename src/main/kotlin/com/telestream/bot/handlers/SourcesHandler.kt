@@ -55,7 +55,7 @@ class SourcesHandler(private val bot: TelegramClient) {
             listOf(
                 InlineKeyboardButton(
                     text = t("btn_live_search", lang),
-                    switchInlineQueryCurrentChat = ""
+                    switchInlineQueryCurrentChat = "@sources "
                 ),
                 InlineKeyboardButton(
                     text = t("btn_search_source", lang),

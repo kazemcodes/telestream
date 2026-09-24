@@ -54,7 +54,41 @@ Stream and download movies, series, and anime natively on Telegram.
         "btn_repos" to "📦 Repositories",
         "btn_sync" to "🔄 Sync Repositories",
         "btn_donate" to "☕ Donate",
+        "btn_help" to "💡 Help & Guide",
         "btn_lang" to "🌐 Language / زبان",
+        "help_msg" to """
+🎬 *TeleStream — User Guide & Help*
+
+• 🔍 *Search Movies & Series:*
+  Send `/search <title>` (e.g. `/search Dune`) or type any title directly into the chat.
+
+• 📱 *Telegram Mini App:*
+  Type `/app` or tap the **🎬 TeleStream** button beside the message box to open the full web player.
+
+• ⚡ *Inline Search:*
+  Type `@%s <title>` in any chat to search and share movies.
+  Type `@%s @sources` to search through available sources.
+
+• 📂 *Feeds & Categories:*
+  `/popular` — Popular & trending titles
+  `/latest` — Latest releases
+  `/categories` — Categories & genres from current source
+  `/random` — Surprise me with a random title
+
+• 📡 *Sources & Scrapers:*
+  `/sources` — Browse, filter, and switch active source
+  `/check_sources` — Check ping and health of scrapers
+  `/source <name>` — Switch directly to a specific source
+
+• 🕒 *History & Bookmarks:*
+  `/history` — Continue watching where you left off
+  `/bookmarks` — View your saved bookmarks
+
+• ⚙️ *Settings & Info:*
+  `/language` — Switch language (English / فارسی)
+  `/donate` — Support development & server costs
+  `/ping` — Check bot connectivity
+""".trimIndent(),
         "btn_watch" to "▶️ Watch Online / Download",
         "btn_episodes" to "📺 Episodes",
         "btn_bookmark" to "⭐ Bookmark",
@@ -250,7 +284,41 @@ If you enjoy using this bot, please consider supporting development and server c
         "btn_repos" to "📦 مخازن سورس‌ها",
         "btn_sync" to "🔄 همگام‌سازی مخازن",
         "btn_donate" to "☕ حمایت مالی",
+        "btn_help" to "💡 راهنما و آموزش",
         "btn_lang" to "🌐 تغییر زبان / Language",
+        "help_msg" to """
+🎬 *راهنمای جامع ربات و مینی‌اپ تله‌استریم (TeleStream)*
+
+• 🔍 *جستجوی فیلم و سریال:*
+  دستور `/search <نام فیلم>` (مثال: `/search Batman`) را ارسال کنید یا مستقیماً نام فیلم را در چت بنویسید.
+
+• 📱 *مینی‌اپ و پخش‌کننده آنلاین (Web Player):*
+  دستور `/app` را بفرستید یا دکمه **🎬 TeleStream** کنار کادر پیام را لمس کنید تا مینی‌اپ با کیفیت بالا و زیرنویس باز شود.
+
+• ⚡ *حالت زنده اینلاین (Inline):*
+  در هر چت یا گروهی با نوشتن `@%s <نام فیلم>` فیلم‌ها را جستجو و اشتراک‌گذاری کنید.
+  با نوشتن `@%s @sources` سورس‌های موجود را مستقیماً جستجو و بررسی کنید.
+
+• 📂 *مرور و پیشنهادها:*
+  `/popular` — فیلم‌ها و سریال‌های محبوب و داغ
+  `/latest` — تازه‌ترین فیلم‌ها و قسمت‌های منتشر شده
+  `/categories` — دسته‌بندی‌ها و ژانرهای سورس انتخابی
+  `/random` — پیشنهاد فیلم تصادفی و شانسی
+
+• 📡 *مدیریت سورس‌ها و ارائه‌دهندگان:*
+  `/sources` — لیست و تغییر سورس فعال (KissKH، SuperStream، StreamPlay و...)
+  `/check_sources` — تست پینگ و سلامت اتصال سورس‌ها
+  `/source <نام سورس>` — سوییچ سریع به یک سورس مشخص
+
+• 🕒 *تاریخچه و نشان‌شده‌ها:*
+  `/history` — ادامه تماشا از جایی که متوقف شدید
+  `/bookmarks` — مشاهده فیلم‌ها و سریال‌های نشان‌شده شما
+
+• ⚙️ *تنظیمات و پشتیبانی:*
+  `/language` — تغییر زبان (فارسی / English)
+  `/donate` — آدرس‌های رمزارز جهت حمایت مالی از پروژه
+  `/ping` — بررسی وضعیت و پینگ ربات
+""".trimIndent(),
         "btn_watch" to "▶️ تماشا / دانلود",
         "btn_episodes" to "📺 لیست قسمت‌ها",
         "btn_bookmark" to "⭐ افزودن به نشان‌شده‌ها",

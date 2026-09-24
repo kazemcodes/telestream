@@ -8,6 +8,7 @@ import com.telestream.telegram.CallbackQuery
 import com.telestream.telegram.InlineKeyboardButton
 import com.telestream.telegram.InlineKeyboardMarkup
 import com.telestream.telegram.TelegramClient
+import com.telestream.telegram.WebAppInfo
 import kotlin.math.max
 
 class AdminHandler(private val bot: TelegramClient) {
@@ -155,6 +156,42 @@ class AdminHandler(private val bot: TelegramClient) {
             if (!edited) bot.sendMessage(chatId, text, replyMarkup = keyboard)
         } else {
             bot.sendMessage(chatId, text, replyMarkup = keyboard)
+        }
+    }
+
+    suspend fun showHelpMessage(chatId: Long, lang: String, messageId: Long? = null) {
+        val botUsername = try { bot.getMe()?.username ?: "telecloudstreambot" } catch (_: Exception) { "telecloudstreambot" }
+        val helpText = t("help_msg", lang, botUsername, botUsername)
+        val rows = mutableListOf<List<InlineKeyboardButton>>()
+        val webAppUrl = Config.webAppUrl
+        if (webAppUrl.startsWith("https://")) {
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = t("btn_webapp", lang),
+                        webApp = WebAppInfo(webAppUrl)
+                    )
+                )
+            )
+        }
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_search", lang), callbackData = "menu:search"),
+                InlineKeyboardButton(text = t("btn_sources", lang), callbackData = "menu:sources")
+            )
+        )
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_donate", lang), callbackData = "menu:donate"),
+                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+            )
+        )
+        val keyboard = InlineKeyboardMarkup(rows)
+        if (messageId != null) {
+            val edited = bot.editMessageText(chatId, messageId, helpText, replyMarkup = keyboard)
+            if (!edited) bot.sendMessage(chatId, helpText, replyMarkup = keyboard)
+        } else {
+            bot.sendMessage(chatId, helpText, replyMarkup = keyboard)
         }
     }
 

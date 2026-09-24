@@ -244,6 +244,10 @@ class CommandHandler(
                 mediaHandler.showBookmarks(chatId, userId, lang)
             }
 
+            cmd == "/help" -> {
+                sendHelpMessage(chatId, lang)
+            }
+
             else -> {
                 if (stateManager.userSourceFilterPending.remove(userId) == true) {
                     sourcesHandler.showSourcesManager(chatId, userId, lang, filterLang = "all", page = 0, query = text)
@@ -253,6 +257,42 @@ class CommandHandler(
                     searchHandler.executeSearch(chatId, userId, lang, targetSource, text)
                 }
             }
+        }
+    }
+
+    suspend fun sendHelpMessage(chatId: Long, lang: String, messageId: Long? = null) {
+        val botUsername = try { bot.getMe()?.username ?: "telecloudstreambot" } catch (_: Exception) { "telecloudstreambot" }
+        val helpText = t("help_msg", lang, botUsername, botUsername)
+        val rows = mutableListOf<List<InlineKeyboardButton>>()
+        val webAppUrl = Config.webAppUrl
+        if (webAppUrl.startsWith("https://")) {
+            rows.add(
+                listOf(
+                    InlineKeyboardButton(
+                        text = t("btn_webapp", lang),
+                        webApp = WebAppInfo(webAppUrl)
+                    )
+                )
+            )
+        }
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_search", lang), callbackData = "menu:search"),
+                InlineKeyboardButton(text = t("btn_sources", lang), callbackData = "menu:sources")
+            )
+        )
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_donate", lang), callbackData = "menu:donate"),
+                InlineKeyboardButton(text = t("btn_close", lang), callbackData = "close")
+            )
+        )
+        val keyboard = InlineKeyboardMarkup(rows)
+        if (messageId != null) {
+            val edited = bot.editMessageText(chatId, messageId, helpText, replyMarkup = keyboard)
+            if (!edited) bot.sendMessage(chatId, helpText, replyMarkup = keyboard)
+        } else {
+            bot.sendMessage(chatId, helpText, replyMarkup = keyboard)
         }
     }
 }

@@ -246,6 +246,11 @@ class CallbackRouter(
                 bot.answerCallbackQuery(callback.id)
             }
 
+            data == "menu:help" -> {
+                adminHandler.showHelpMessage(chatId, lang, messageId)
+                bot.answerCallbackQuery(callback.id)
+            }
+
             data == "toggle_nsfw" -> {
                 adminHandler.handleNsfwToggle(callback, chatId, messageId, userId, lang)
             }

@@ -83,6 +83,12 @@ object BotKeyboards {
                 InlineKeyboardButton(text = t("btn_donate", lang), callbackData = "menu:donate")
             )
         )
+        // Row 6: Help
+        rows.add(
+            listOf(
+                InlineKeyboardButton(text = t("btn_help", lang), callbackData = "menu:help")
+            )
+        )
 
         if (isAdmin) {
             rows.add(

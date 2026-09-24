@@ -74,14 +74,14 @@ object Config {
 
     // Crypto donation wallet addresses
     val usdtTrc20: String = get("DONATION_USDT_TRC20")
-        ?: "TQn9Y2khEsLJW1ChVWFMSMeSTow5KaxnSE" // Placeholder / Default
+        ?: "TFUpCbCdVqKGNutTzfyPBcKXPBMdSLXyU5" // Tron / USDT TRC20
 
     val tonWallet: String = get("DONATION_TON")
-        ?: "UQDP14pSjV1k8L0Fj8d2p7k8XqZ7YjB7p9" // Placeholder / Default
+        ?: "UQC8SeYqEuvyE_1T3G1sBgZE_dVNgcdwdVuMiPoJKirbbSkx" // Telegram / TON
 
     val btcWallet: String = get("DONATION_BTC")
-        ?: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" // Placeholder / Default
+        ?: "bc1qlh484m8e0ff4pewvuyu0xg7tc7zzynzkj6ufcx" // Bitcoin
 
     val ethWallet: String = get("DONATION_ETH")
-        ?: "0x71C...YourEthAddressHere"
+        ?: "0x86dA13b11011B7Bdff2259B576AD5c1c9E94d3Ef" // Ethereum ERC20
 }
