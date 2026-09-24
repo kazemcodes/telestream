@@ -1,3 +1,16 @@
+---
+title: Telestream Bot
+emoji: 🎬
+colorFrom: red
+colorTo: indigo
+sdk: gradio
+sdk_version: 6.28.0
+python_version: '3.12'
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # 🎬 TeleStream: Native CloudStream Telegram Bot (Pure Kotlin JVM)
 
 **TeleStream** is a lightweight, high-performance Telegram movie & series streaming bot written in **100% Kotlin (Java 21 LTS)** using **Ktor & Coroutines**. 

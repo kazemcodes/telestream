@@ -21,15 +21,25 @@ def start_bot():
 
     if jar_path and os.path.exists(jar_path):
         print(f"🚀 Launching TeleStream JAR: {jar_path}")
-        # Run Java process in the background
-        subprocess.Popen([
-            "java",
-            "-XX:+UseG1GC",
-            "-XX:MaxRAMPercentage=75.0",
-            "-Xms256m",
-            "-jar",
-            jar_path
-        ])
+        env = os.environ.copy()
+        # TeleStream internal Ktor server on 7861 so Gradio stays on standard 7860
+        env["PORT"] = "7861"
+
+        # Make sure data directory exists
+        os.makedirs("data/plugins_cache", exist_ok=True)
+
+        proc = subprocess.Popen(
+            [
+                "java",
+                "-XX:+UseG1GC",
+                "-XX:MaxRAMPercentage=75.0",
+                "-Xms256m",
+                "-jar",
+                jar_path
+            ],
+            env=env
+        )
+        print(f"✅ TeleStream process started with PID {proc.pid}")
     else:
         print("❌ Cannot find or build executable JAR.")
 
@@ -40,11 +50,11 @@ start_bot()
 with gr.Blocks(title="TeleStream Bot") as demo:
     gr.Markdown("""
     # 🎬 TeleStream Telegram Bot
-    ### 🟢 وضعیت: فعال و در حال اجرا (Pure JVM)
-    ربات تلگرام با موفقیت اجرا شد و در حال پاسخگویی به کاربران است.
+    ### 🟢 وضعیت: فعال و آنلاین (Pure JVM)
+    ربات تلگرام در پس‌زمینه با موفقیت اجرا شده و در حال پردازش درخواست‌های کاربران است.
     
-    * به ربات تلگرام خود بروید و دستور `/start` را ارسال کنید.
-    * وب‌سرور داخلی و استریم‌ها در پس‌زمینه فعال هستند.
+    * **شروع کار:** در پیام‌رسان تلگرام به ربات خود دستور `/start` را ارسال کنید.
+    * **سخت‌افزار:** در حال اجرا با ۱۶ گیگابایت حافظه رم بر روی Hugging Face Spaces.
     """)
 
 if __name__ == "__main__":
