@@ -77,6 +77,25 @@ class CloudStreamClassLoader(
                         if (owner == "kotlinx/serialization/SerializersKt" && methodName == "serializer") {
                             fixedName = "serializerOrNull"
                         }
+                        // Intercept kotlin/text/StringsKt calls to null-tolerant PluginBytecodeHelper
+                        // to prevent NullPointerExceptions when upstream JSON returns null for non-null String fields (e.g. video.released in SuperStream)
+                        if (owner.startsWith("kotlin/text/StringsKt")) {
+                            when (methodName) {
+                                "split\$default", "split", "contains\$default", "contains",
+                                "startsWith\$default", "substringAfterLast\$default",
+                                "substringBefore\$default", "substringAfter\$default",
+                                "replace\$default", "toIntOrNull" -> {
+                                    super.visitMethodInsn(
+                                        Opcodes.INVOKESTATIC,
+                                        "com/telestream/repo/PluginBytecodeHelper",
+                                        methodName,
+                                        descriptor,
+                                        false
+                                    )
+                                    return
+                                }
+                            }
+                        }
                         super.visitMethodInsn(opcode, owner, fixedName, descriptor, isInterface)
                     }
                 }

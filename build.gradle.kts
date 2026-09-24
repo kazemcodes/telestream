@@ -93,6 +93,16 @@ tasks.register<Jar>("fatJar") {
     manifest {
         attributes["Main-Class"] = "com.telestream.MainKt"
     }
+    // Explicitly exclude sample directory, test artifacts and large unneeded fonts from jar
+    exclude("sample/**")
+    exclude("**/sample/**")
+    exclude("sample*")
+    exclude("**/*.cs3")
+    exclude("fonts/**")
+    exclude("*.tmp")
+    exclude("**/test/**")
+    exclude("**/test_plugin.cs3")
+
     from(sourceSets.main.get().output)
     dependsOn(configurations.runtimeClasspath)
     from({

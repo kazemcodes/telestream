@@ -151,4 +151,25 @@ class CloudStreamPluginLoaderTest {
         assertTrue(ssPopular.isNotEmpty(), "SuperStream getPopular should return results")
         println("Verified SuperStream getPopular: found ${ssPopular.size} items")
     }
+
+    @Test
+    fun testSuperStreamSimpsonsLoad() = kotlinx.coroutines.runBlocking {
+        System.setProperty("kotlinx.coroutines.stacktrace.recovery", "false")
+        com.lagradost.cloudstream3.MainActivity.initNetwork()
+
+        val ssMeta = PluginMetadata(name = "SuperStream", internalName = "SuperStream", url = "local", repositoryName = "local")
+        val ssProvider = CloudStreamPluginLoader.loadPlugin(ssMeta)
+        assertNotNull(ssProvider, "SuperStream should load")
+
+        val simpsonsSearch = com.telestream.providers.ProviderManager.searchInProvider("SuperStream", "The Simpsons")
+        assertTrue(simpsonsSearch.isNotEmpty(), "SuperStream search should find The Simpsons")
+        val simpsons = simpsonsSearch.first { it.name.contains("Simpsons", ignoreCase = true) }
+        println("Found The Simpsons: ${simpsons.name}, url: ${simpsons.url}")
+
+        val simpsonsLoaded = com.telestream.providers.ProviderManager.load("SuperStream", simpsons.url)
+        assertNotNull(simpsonsLoaded, "SuperStream.load should succeed for The Simpsons without split NullPointerException")
+        assertTrue(simpsonsLoaded is com.lagradost.cloudstream3.TvSeriesLoadResponse, "The Simpsons should be a TvSeriesLoadResponse")
+        println("Verified The Simpsons load: ${simpsonsLoaded.name}, total episodes: ${simpsonsLoaded.episodes.size}")
+        assertTrue(simpsonsLoaded.episodes.isNotEmpty(), "The Simpsons should have loaded episodes")
+    }
 }
