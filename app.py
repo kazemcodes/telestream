@@ -13,7 +13,10 @@ except Exception:
     def gpu_handler():
         return "CPU Ready"
 
+bot_process = None
+
 def start_bot():
+    global bot_process
     jar_candidates = [
         "telestream-all.jar",
         "build/libs/telestream-all.jar"
@@ -32,13 +35,13 @@ def start_bot():
     if jar_path and os.path.exists(jar_path):
         print(f"🚀 Launching TeleStream JAR: {jar_path}")
         env = os.environ.copy()
-        # TeleStream internal Ktor server on 7861 so Gradio stays on standard 7860
-        env["PORT"] = "7861"
+        # TeleStream internal Ktor server on 8080 so Gradio (7860/7861) has zero port conflict
+        env["PORT"] = "8080"
 
         # Make sure data directory exists
         os.makedirs("data/plugins_cache", exist_ok=True)
 
-        proc = subprocess.Popen(
+        bot_process = subprocess.Popen(
             [
                 "java",
                 "-XX:+UseG1GC",
@@ -49,9 +52,15 @@ def start_bot():
             ],
             env=env
         )
-        print(f"✅ TeleStream process started with PID {proc.pid}")
+        print(f"✅ TeleStream process started with PID {bot_process.pid}")
     else:
         print("❌ Cannot find or build executable JAR.")
+
+def get_status():
+    global bot_process
+    if bot_process and bot_process.poll() is None:
+        return f"🟢 TeleStream is ACTIVE (PID: {bot_process.pid})"
+    return "🔴 TeleStream process is stopped"
 
 # Start bot process on space startup
 start_bot()
@@ -67,10 +76,12 @@ with gr.Blocks(title="TeleStream Bot") as demo:
     * **سخت‌افزار:** در حال اجرا با ۱۶ گیگابایت حافظه رم بر روی Hugging Face Spaces.
     """)
     
+    status_box = gr.Textbox(value=get_status, label="Service Status", every=10)
+    
     # Hidden button to satisfy Hugging Face ZeroGPU scanner
     dummy_btn = gr.Button("Status Check", visible=False)
     dummy_output = gr.Textbox(visible=False)
     dummy_btn.click(gpu_handler, outputs=dummy_output)
 
 if __name__ == "__main__":
-    demo.launch(server_port=7860)
+    demo.launch(server_name="0.0.0.0")

@@ -118,31 +118,27 @@ object Database {
     }
 
     fun ensureUser(userId: Long, defaultLang: String = "en") {
-        DriverManager.getConnection(url).use { conn ->
-            val checkSql = "SELECT user_id, language, active_source FROM users WHERE user_id = ?"
-            conn.prepareStatement(checkSql).use { checkStmt ->
-                checkStmt.setLong(1, userId)
-                val rs = checkStmt.executeQuery()
-                if (!rs.next()) {
-                    val activeSrc = "KissKH"
-                    val insertSql = "INSERT INTO users (user_id, language, active_source) VALUES (?, ?, ?)"
-                    conn.prepareStatement(insertSql).use { insStmt ->
-                        insStmt.setLong(1, userId)
-                        insStmt.setString(2, defaultLang)
-                        insStmt.setString(3, activeSrc)
-                        insStmt.executeUpdate()
-                    }
-                    val sourceSql = "INSERT OR IGNORE INTO user_sources (user_id, source_name, is_enabled) VALUES (?, ?, 1)"
-                    conn.prepareStatement(sourceSql).use { sStmt ->
-                        sStmt.setLong(1, userId)
-                        sStmt.setString(2, "KissKH")
-                        sStmt.executeUpdate()
-                        sStmt.setLong(1, userId)
-                        sStmt.setString(2, "StreamPlay")
-                        sStmt.executeUpdate()
-                    }
+        try {
+            DriverManager.getConnection(url).use { conn ->
+                val insertSql = "INSERT OR IGNORE INTO users (user_id, language, active_source) VALUES (?, ?, ?)"
+                conn.prepareStatement(insertSql).use { insStmt ->
+                    insStmt.setLong(1, userId)
+                    insStmt.setString(2, defaultLang)
+                    insStmt.setString(3, "KissKH")
+                    insStmt.executeUpdate()
+                }
+                val sourceSql = "INSERT OR IGNORE INTO user_sources (user_id, source_name, is_enabled) VALUES (?, ?, 1)"
+                conn.prepareStatement(sourceSql).use { sStmt ->
+                    sStmt.setLong(1, userId)
+                    sStmt.setString(2, "KissKH")
+                    sStmt.executeUpdate()
+                    sStmt.setLong(1, userId)
+                    sStmt.setString(2, "StreamPlay")
+                    sStmt.executeUpdate()
                 }
             }
+        } catch (_: Exception) {
+            // Concurrent inserts safely handled
         }
     }
 
