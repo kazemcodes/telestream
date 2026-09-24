@@ -353,6 +353,7 @@ class MediaHandler(
         }
 
         // Smart Stream Badges
+        val directUrlList = mutableListOf<Pair<String, String>>()
         for (link in sortedLinks.take(10)) {
             val icon = if (link.isM3u8) "⚡" else "📥"
             val typeDesc = if (link.isM3u8) "HLS Stream" else "Direct"
@@ -365,26 +366,31 @@ class MediaHandler(
                 else -> "Auto"
             }
             val label = "$icon [ $qualityBadge • $typeDesc ] ${link.name.take(16)}"
-            val cleanLink = UrlSanitizer.sanitizeTelegramUrl(link.url) ?: link.url
+            val safeLink = UrlSanitizer.getSafeButtonUrl(link.url)
 
-            buttons.add(
-                listOf(
-                    InlineKeyboardButton(
-                        text = label,
-                        url = cleanLink
+            if (safeLink != null) {
+                buttons.add(
+                    listOf(
+                        InlineKeyboardButton(
+                            text = label,
+                            url = safeLink
+                        )
                     )
                 )
-            )
+            } else {
+                directUrlList.add(label to link.url)
+            }
         }
 
         val webUrl = UrlSanitizer.resolveWebUrl(epRef.episodeData, epRef.provider, epRef.episodeTitle)
             ?: seriesRef?.let { UrlSanitizer.resolveWebUrl(it.url, it.provider, epRef.episodeTitle) }
-        if (!webUrl.isNullOrBlank()) {
+        val safeWebUrl = UrlSanitizer.getSafeButtonUrl(webUrl)
+        if (!safeWebUrl.isNullOrBlank()) {
             buttons.add(
                 listOf(
                     InlineKeyboardButton(
                         text = t("btn_open_website", lang),
-                        url = webUrl
+                        url = safeWebUrl
                     )
                 )
             )
@@ -403,9 +409,18 @@ class MediaHandler(
             )
         )
 
+        val cleanTitle = epRef.episodeTitle.replace("*", "").replace("_", "").replace("`", "")
+        val baseMsg = t("quality_selection", lang, cleanTitle)
+        val finalMsg = if (directUrlList.isNotEmpty() && buttons.none { it.any { b -> b.url != null } }) {
+            val linksText = directUrlList.joinToString("\n\n") { (lbl, url) ->
+                "$lbl:\n`$url`"
+            }
+            "$baseMsg\n\n$linksText"
+        } else baseMsg
+
         bot.sendMessage(
             chatId,
-            t("quality_selection", lang, epRef.episodeTitle),
+            finalMsg,
             replyMarkup = InlineKeyboardMarkup(buttons)
         )
     }

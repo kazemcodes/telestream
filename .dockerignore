@@ -1,0 +1,8 @@
+.git
+.gradle
+.idea
+.kotlin
+build
+sample
+graphify-out
+*.log

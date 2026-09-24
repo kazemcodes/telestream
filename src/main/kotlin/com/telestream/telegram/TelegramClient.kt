@@ -102,6 +102,21 @@ class TelegramClient(private val botToken: String) {
                         val elem = json.parseToJsonElement(fallbackRes.bodyAsText())
                         elem.jsonObject["result"]?.jsonObject?.get("message_id")?.jsonPrimitive?.longOrNull ?: 1L
                     } else null
+                } else if (errorBody.contains("BUTTON_URL_INVALID") || errorBody.contains("wrong HTTP URL") || errorBody.contains("reply_markup")) {
+                    logger.warn("Retrying sendMessage without replyMarkup due to invalid button URL")
+                    val fallbackRes = client.post("$baseUrl/sendMessage") {
+                        contentType(ContentType.Application.Json)
+                        val fallback = buildJsonObject {
+                            put("chat_id", chatId)
+                            put("text", text)
+                            put("parse_mode", parseMode)
+                        }
+                        setBody(fallback.toString())
+                    }
+                    if (fallbackRes.status.isSuccess()) {
+                        val elem = json.parseToJsonElement(fallbackRes.bodyAsText())
+                        elem.jsonObject["result"]?.jsonObject?.get("message_id")?.jsonPrimitive?.longOrNull ?: 1L
+                    } else null
                 } else null
             }
         } catch (e: Exception) {

@@ -12,6 +12,27 @@ object UrlSanitizer {
         return trimmed.replace(" ", "%20")
     }
 
+    fun getSafeButtonUrl(rawUrl: String?): String? {
+        if (rawUrl.isNullOrBlank()) return null
+        val sanitized = sanitizeTelegramUrl(rawUrl) ?: return null
+        if (!sanitized.startsWith("http://", ignoreCase = true) &&
+            !sanitized.startsWith("https://", ignoreCase = true) &&
+            !sanitized.startsWith("tg://", ignoreCase = true)
+        ) {
+            return null
+        }
+        // Telegram Bot API limit for inline button URL is 512 bytes
+        if (sanitized.length <= 500) {
+            return sanitized
+        }
+        val base = com.telestream.config.Config.webAppUrl.trimEnd('/')
+        if (base.isNotBlank() && (base.startsWith("http://", ignoreCase = true) || base.startsWith("https://", ignoreCase = true))) {
+            val token = com.telestream.bot.model.CallbackTokenCache.put(sanitized)
+            return "$base/r/$token"
+        }
+        return null
+    }
+
     fun resolveWebUrl(rawUrl: String?, providerName: String? = null, title: String? = null): String? {
         if (!rawUrl.isNullOrBlank()) {
             val trimmed = rawUrl.trim()

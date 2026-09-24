@@ -67,6 +67,17 @@ fun main(): Unit {
                 )
             }
 
+            // Short redirect route for long streaming URLs
+            get("/r/{token}") {
+                val token = call.parameters["token"]
+                val targetUrl = token?.let { com.telestream.bot.model.CallbackTokenCache.get<String>(it) }
+                if (!targetUrl.isNullOrBlank()) {
+                    call.respondRedirect(targetUrl, permanent = false)
+                } else {
+                    call.respondText("Link expired or invalid", status = HttpStatusCode.NotFound)
+                }
+            }
+
             // CORS preflight
             options("{...}") {
                 call.response.headers.append("Access-Control-Allow-Origin", "*")
