@@ -1,0 +1,85 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - 'app.py'
+      - 'requirements.txt'
+      - 'README.md'
+      - '.github/workflows/deploy-hf.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build & Sync to HF Space
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: 🔨 Make Gradle Executable
+        run: chmod +x ./gradlew
+
+      - name: 📦 Build Native JVM Fat JAR
+        run: ./gradlew fatJar -x test --no-daemon
+
+      - name: 📂 Prepare Space Deployment Bundle
+        run: |
+          mkdir -p deploy_space
+          cp build/libs/telestream-all.jar deploy_space/telestream-all.jar
+          cp app.py deploy_space/app.py
+          cp requirements.txt deploy_space/requirements.txt
+          cp README.md deploy_space/README.md
+          ls -lh deploy_space
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 🚀 Install Hugging Face Hub CLI & SDK
+        run: pip install --upgrade huggingface_hub
+
+      - name: 🌐 Deploy Bundle to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_REPO: ${{ vars.HF_SPACE_REPO || 'kazemcodes/telestream-bot' }}
+        run: |
+          python - << 'EOF'
+          import os
+          import sys
+          from huggingface_hub import HfApi
+
+          token = os.environ.get("HF_TOKEN")
+          if not token:
+              print("❌ ERROR: Secret 'HF_TOKEN' is missing in GitHub repository secrets!")
+              print("👉 Please add HF_TOKEN under Repository Settings -> Secrets and variables -> Actions")
+              sys.exit(1)
+
+          repo_id = os.environ.get("HF_SPACE_REPO", "kazemcodes/telestream-bot")
+          print(f"🚀 Uploading deployment bundle to Hugging Face Space: {repo_id} ...")
+
+          api = HfApi(token=token)
+          api.upload_folder(
+              folder_path="deploy_space",
+              repo_id=repo_id,
+              repo_type="space",
+              commit_message="🚀 Deploy latest TeleStream build from GitHub Actions"
+          )
+          print("✅ Deployment to Hugging Face Space completed successfully!")
+          EOF
