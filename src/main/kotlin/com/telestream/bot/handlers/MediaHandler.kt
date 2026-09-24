@@ -337,7 +337,7 @@ class MediaHandler(
 
         // Web Video Player button (Telegram Mini App)
         val webAppUrl = Config.webAppUrl
-        if (webAppUrl.isNotBlank() && webAppUrl.startsWith("https://")) {
+        if (Config.enableWebApp && webAppUrl.isNotBlank() && webAppUrl.startsWith("https://")) {
             val encodedProvider = java.net.URLEncoder.encode(epRef.provider, "UTF-8")
             val encodedData = java.net.URLEncoder.encode(epRef.episodeData, "UTF-8")
             val encodedTitle = java.net.URLEncoder.encode(epRef.episodeTitle, "UTF-8")

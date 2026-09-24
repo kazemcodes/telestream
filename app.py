@@ -26,6 +26,8 @@ except Exception:
 bot_process = None
 KTOR_INTERNAL_URL = "http://127.0.0.1:8080"
 
+ENABLE_WEBAPP = os.environ.get("ENABLE_WEBAPP", "false").lower() == "true"
+
 def start_bot():
     global bot_process
     jar_candidates = [
@@ -48,6 +50,7 @@ def start_bot():
         env = os.environ.copy()
         # TeleStream internal Ktor server on 8080 so Gradio on 7860 has zero port conflict
         env["PORT"] = "8080"
+        env["ENABLE_WEBAPP"] = "true" if ENABLE_WEBAPP else "false"
 
         # Ensure cache directories exist
         os.makedirs("data/plugins_cache", exist_ok=True)
@@ -77,61 +80,50 @@ def get_status():
 start_bot()
 
 # 1. Gradio Web Interface
-with gr.Blocks(title="TeleStream Bot & WebApp") as demo:
+with gr.Blocks(title="TeleStream Bot") as demo:
     gr.Markdown("""
-    # 🎬 TeleStream: Native CloudStream Telegram Bot & Mini App
+    # 🎬 TeleStream: Native CloudStream Telegram Bot
     ### 🟢 وضعیت ربات: فعال و آنلاین (Pure JVM Kotlin)
     """)
 
     with gr.Tabs():
-        with gr.TabItem("🎬 پیش‌نمایش مینی‌اپ تحت وب (Web Player)"):
-            gr.Markdown("""
-            مینی‌اپ تلگرام مستقیماً در زیر در دسترس است. می‌توانید فیلم‌ها و سریال‌ها را جستجو کرده و استریم کنید:
-            """)
-            gr.HTML("""
-            <div style="width: 100%; height: 780px; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.6);">
-                <iframe src="/webapp" style="width: 100%; height: 100%; border: none;"></iframe>
-            </div>
-            <div style="margin-top: 10px; text-align: center;">
-                <a href="/webapp" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: bold; font-family: sans-serif;">
-                    🔗 باز کردن مینی‌اپ در صفحه تمام‌صفحه (Full Screen)
-                </a>
-            </div>
-            """)
-
-        with gr.TabItem("🤖 راهنمای اتصال در تلگرام (Telegram Setup)"):
-            gr.Markdown("""
-            ### 📱 روش‌های باز کردن مینی‌اپ در تلگرام:
-            
-            1. **دکمه منوی کنار کادر پیام (Menu Button):**
-               در چت ربات، در گوشه پایین سمت چپ کادر تایپ پیام، دکمه **🎬 TeleStream** قرار دارد که با یک کلیک مینی‌اپ را به صورت کشویی (Modal Sheet) باز می‌کند.
-            
-            2. **دستور `/app` یا `/start`:**
-               در ربات دستور `/app` یا `/start` را ارسال کنید تا کلید شیشه‌ای **🌐 باز کردن در مینی‌اپ** برای شما ارسال شود.
-            
-            3. **تنظیم دکمه منو در @BotFather (اختیاری و دائمی):**
-               * به ربات `@BotFather` در تلگرام بروید.
-               * دستور `/setmenubutton` را ارسال کنید.
-               * ربات خود را انتخاب کنید.
-               * آدرس مینی‌اپ را وارد کنید:
-                 `https://kazemcodes-telestream-bot.hf.space/webapp`
-               * عنوان دکمه را وارد کنید: `🎬 TeleStream`
-            
-            4. **ساخت لینک اختصاصی مینی‌اپ (Direct Mini App Link):**
-               * در `@BotFather` دستور `/newapp` را ارسال کنید.
-               * ربات خود را انتخاب و نام و توضیحات و تصویر را وارد کنید.
-               * آدرس وب‌اپ را قرار دهید:
-                 `https://kazemcodes-telestream-bot.hf.space/webapp`
-               * یک نام کوتاه (مثل `play` یا `stream`) انتخاب کنید تا لینک `t.me/YourBot/play` برای اشتراک‌گذاری در کانال‌ها و گروه‌ها ایجاد شود.
-            """)
-
         with gr.TabItem("⚙️ وضعیت و سلامت سرور (Server Status)"):
             status_box = gr.Textbox(value=get_status, label="Service Status", every=10)
             gr.Markdown("""
+            * **پلتفرم:** ربات تلگرام تله‌استریم (Pure Kotlin JVM)
+            * **حالت استریم:** پخش و استریم مستقیم رسانه‌ها در تلگرام و پلیرهای اختصاصی (VLC, MX Player, Browser)
             * **رم اختصاص یافته:** تا ۱۶ گیگابایت حافظه رم بر روی Hugging Face Spaces
             * **موتور اجرایی:** Pure JVM Kotlin (JDK 21 LTS) + Ktor CIO + Gradio FastAPI
             * **پروتکل‌ها:** HLS (m3u8), DoH (DNS over HTTPS), ASM Bytecode Shims
             """)
+
+        if ENABLE_WEBAPP:
+            with gr.TabItem("🎬 پیش‌نمایش مینی‌اپ تحت وب (Web Player)"):
+                gr.Markdown("""
+                مینی‌اپ تلگرام مستقیماً در زیر در دسترس است. می‌توانید فیلم‌ها و سریال‌ها را جستجو کرده و استریم کنید:
+                """)
+                gr.HTML("""
+                <div style="width: 100%; height: 780px; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.6);">
+                    <iframe src="/webapp" style="width: 100%; height: 100%; border: none;"></iframe>
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <a href="/webapp" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: bold; font-family: sans-serif;">
+                        🔗 باز کردن مینی‌اپ در صفحه تمام‌صفحه (Full Screen)
+                    </a>
+                </div>
+                """)
+
+            with gr.TabItem("🤖 راهنمای اتصال در تلگرام (Telegram Setup)"):
+                gr.Markdown("""
+                ### 📱 روش‌های باز کردن مینی‌اپ در تلگرام:
+                
+                1. **دکمه منوی کنار کادر پیام (Menu Button):**
+                   در چت ربات، در گوشه پایین سمت چپ کادر تایپ پیام، دکمه **🎬 TeleStream** قرار دارد که با یک کلیک مینی‌اپ را باز می‌کند.
+                
+                2. **دستور `/app` یا `/start`:**
+                   در ربات دستور `/app` یا `/start` را ارسال کنید تا کلید شیشه‌ای **🌐 باز کردن در مینی‌اپ** برای شما ارسال شود.
+                """)
+
 
     # Required element to satisfy Hugging Face ZeroGPU scanner
     dummy_btn = gr.Button("GPU Check", visible=False)

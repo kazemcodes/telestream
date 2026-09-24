@@ -45,7 +45,7 @@ fun main(): Unit {
         logger.info("👉 Scraper Proxy: ${Config.scraperProxy}")
     }
     logger.info("👉 Web Health Server: http://0.0.0.0:$port/health")
-    logger.info("👉 Mini App WebUI: $webAppUrl")
+    logger.info("👉 Mini App WebUI: ${if (Config.enableWebApp) webAppUrl else "Disabled"}")
     logger.info("=====================================================")
 
     // Start embedded Ktor web server for Telegram Mini App & API
@@ -276,10 +276,10 @@ fun main(): Unit {
         val client = TelegramClient(botToken)
         val runner = BotRunner(client)
 
-        // Register Telegram Menu Button to open Mini App if public HTTPS URL available
-        if (webAppUrl.startsWith("https://")) {
-            launch {
-                try {
+        // Set Telegram Menu Button: if web app enabled, register web_app button; otherwise register standard bot commands menu button
+        launch {
+            try {
+                if (Config.enableWebApp && webAppUrl.startsWith("https://")) {
                     val ok = client.setChatMenuButton(
                         MenuButton(
                             type = "web_app",
@@ -290,9 +290,14 @@ fun main(): Unit {
                     if (ok) {
                         logger.info("👉 Registered Telegram Mini App Menu Button: $webAppUrl")
                     }
-                } catch (e: Exception) {
-                    logger.debug("Failed setting chat menu button: ${e.message}")
+                } else {
+                    val ok = client.setChatMenuButton(MenuButton(type = "commands"))
+                    if (ok) {
+                        logger.info("👉 Telegram Menu Button set to standard bot commands (Mini App disabled)")
+                    }
                 }
+            } catch (e: Exception) {
+                logger.debug("Failed setting chat menu button: ${e.message}")
             }
         }
 

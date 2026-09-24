@@ -164,7 +164,7 @@ class AdminHandler(private val bot: TelegramClient) {
         val helpText = t("help_msg", lang, botUsername, botUsername)
         val rows = mutableListOf<List<InlineKeyboardButton>>()
         val webAppUrl = Config.webAppUrl
-        if (webAppUrl.startsWith("https://")) {
+        if (Config.enableWebApp && webAppUrl.startsWith("https://")) {
             rows.add(
                 listOf(
                     InlineKeyboardButton(

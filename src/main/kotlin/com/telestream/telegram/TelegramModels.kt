@@ -98,9 +98,9 @@ data class InlineKeyboardButton(
 
 @Serializable
 data class MenuButton(
-    val type: String = "web_app",
-    val text: String = "🎬 TeleStream",
-    @SerialName("web_app") val webApp: WebAppInfo
+    val type: String = "commands",
+    val text: String? = null,
+    @SerialName("web_app") val webApp: WebAppInfo? = null
 )
 
 @Serializable

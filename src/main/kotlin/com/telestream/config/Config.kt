@@ -61,6 +61,9 @@ object Config {
     } ?: get("SPACE_HOST")?.let { "https://$it/webapp" }
       ?: "http://localhost:$port/webapp"
 
+    // Enable / disable Telegram Mini WebApp (default: false = disabled)
+    val enableWebApp: Boolean = get("ENABLE_WEBAPP")?.toBooleanStrictOrNull() ?: false
+
     // Admin user IDs (comma separated, e.g. "12345678,87654321")
     val adminIds: Set<Long> = get("ADMIN_IDS")
         ?.split(",")

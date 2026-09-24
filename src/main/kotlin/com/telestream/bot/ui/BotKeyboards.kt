@@ -38,7 +38,7 @@ object BotKeyboards {
         }
 
         val webAppUrl = Config.webAppUrl
-        if (webAppUrl.isNotBlank() && webAppUrl.startsWith("https://")) {
+        if (Config.enableWebApp && webAppUrl.isNotBlank() && webAppUrl.startsWith("https://")) {
             rows.add(
                 listOf(
                     InlineKeyboardButton(

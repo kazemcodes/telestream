@@ -145,30 +145,38 @@ class CommandHandler(
             }
 
             cmd == "/app" -> {
-                val webAppUrl = Config.webAppUrl
-                if (webAppUrl.startsWith("https://")) {
-                    val keyboard = InlineKeyboardMarkup(
-                        listOf(
+                if (!Config.enableWebApp) {
+                    bot.sendMessage(
+                        chatId,
+                        if (lang == "fa") "🎬 مینی‌اپ در حال حاضر غیرفعال است. تمامی فیلم‌ها و قسمت‌ها مستقیماً در همین چت تلگرام قابل دریافت و استریم هستند."
+                        else "🎬 Mini App is currently disabled. All movies and episodes are streamed directly in this chat."
+                    )
+                } else {
+                    val webAppUrl = Config.webAppUrl
+                    if (webAppUrl.startsWith("https://")) {
+                        val keyboard = InlineKeyboardMarkup(
                             listOf(
-                                InlineKeyboardButton(
-                                    text = t("btn_webapp", lang),
-                                    webApp = WebAppInfo(webAppUrl)
+                                listOf(
+                                    InlineKeyboardButton(
+                                        text = t("btn_webapp", lang),
+                                        webApp = WebAppInfo(webAppUrl)
+                                    )
                                 )
                             )
                         )
-                    )
-                    bot.sendMessage(
-                        chatId,
-                        if (lang == "fa") "🎬 *برای اجرای نسخه مینی‌اپ تله‌استریم روی دکمه زیر کلیک کنید:*"
-                        else "🎬 *Click the button below to launch TeleStream Mini App:*",
-                        replyMarkup = keyboard
-                    )
-                } else {
-                    bot.sendMessage(
-                        chatId,
-                        if (lang == "fa") "⚠️ برای استفاده از مینی‌اپ، یک آدرس HTTPS معتبر در متغیر `WEBAPP_URL` لازم است."
-                        else "⚠️ Telegram Mini Apps require a valid HTTPS URL in `WEBAPP_URL` (e.g. Cloudflare Tunnel or domain)."
-                    )
+                        bot.sendMessage(
+                            chatId,
+                            if (lang == "fa") "🎬 *برای اجرای نسخه مینی‌اپ تله‌استریم روی دکمه زیر کلیک کنید:*"
+                            else "🎬 *Click the button below to launch TeleStream Mini App:*",
+                            replyMarkup = keyboard
+                        )
+                    } else {
+                        bot.sendMessage(
+                            chatId,
+                            if (lang == "fa") "⚠️ برای استفاده از مینی‌اپ، یک آدرس HTTPS معتبر در متغیر `WEBAPP_URL` لازم است."
+                            else "⚠️ Telegram Mini Apps require a valid HTTPS URL in `WEBAPP_URL` (e.g. Cloudflare Tunnel or domain)."
+                        )
+                    }
                 }
             }
 
@@ -265,7 +273,7 @@ class CommandHandler(
         val helpText = t("help_msg", lang, botUsername, botUsername)
         val rows = mutableListOf<List<InlineKeyboardButton>>()
         val webAppUrl = Config.webAppUrl
-        if (webAppUrl.startsWith("https://")) {
+        if (Config.enableWebApp && webAppUrl.startsWith("https://")) {
             rows.add(
                 listOf(
                     InlineKeyboardButton(
