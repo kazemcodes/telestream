@@ -6,6 +6,30 @@ import java.net.URLEncoder
 
 object UrlSanitizer {
 
+    /**
+     * The public base URL used to build short `/r/<token>` redirects for over-long links.
+     *
+     * Returns null when no publicly reachable base is configured. `localhost`/`127.0.0.1` do not
+     * count: Telegram resolves button URLs from *its own* servers, so a button pointing at
+     * `http://localhost:7860/r/<token>` is rejected with "Wrong HTTP URL" and the whole message
+     * fails to send. Falling back to the direct link is far better than losing the message.
+     */
+    private fun publicRedirectBase(): String? {
+        val base = com.telestream.config.Config.webAppUrl
+            .removeSuffix("/webapp")
+            .trimEnd('/')
+        if (base.isBlank()) return null
+        if (!base.startsWith("http://", ignoreCase = true) &&
+            !base.startsWith("https://", ignoreCase = true)
+        ) {
+            return null
+        }
+        val host = runCatching { java.net.URI(base).host }.getOrNull()?.lowercase()
+        val isLocal = host == null || host == "localhost" || host == "127.0.0.1" ||
+            host == "0.0.0.0" || host == "::1" || host == "[::1]" || host.endsWith(".local")
+        return if (isLocal) null else base
+    }
+
     fun sanitizeTelegramUrl(rawUrl: String?): String? {
         if (rawUrl.isNullOrBlank()) return null
         val trimmed = rawUrl.trim()
@@ -25,12 +49,12 @@ object UrlSanitizer {
         if (sanitized.length <= 500) {
             return sanitized
         }
-        val base = com.telestream.config.Config.webAppUrl.removeSuffix("/webapp").trimEnd('/')
-        if (base.isNotBlank() && (base.startsWith("http://", ignoreCase = true) || base.startsWith("https://", ignoreCase = true))) {
-            val token = com.telestream.bot.model.CallbackTokenCache.put(sanitized)
-            return "$base/r/$token"
-        }
-        return null
+        // Too long for a button: wrap in a short redirect only when we have a public base to
+        // redirect through. Otherwise return the URL as-is; Telegram may reject it, but that is
+        // strictly better than emitting a localhost URL that is guaranteed to be rejected.
+        val base = publicRedirectBase() ?: return sanitized
+        val token = com.telestream.bot.model.CallbackTokenCache.put(sanitized)
+        return "$base/r/$token"
     }
 
     fun resolveWebUrl(rawUrl: String?, providerName: String? = null, title: String? = null): String? {
