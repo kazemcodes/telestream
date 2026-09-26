@@ -3,7 +3,6 @@ package com.telestream.repo
 import android.content.SimulatedContext
 import com.googlecode.d2j.dex.Dex2jar
 import com.googlecode.d2j.reader.MultiDexFileReader
-import com.googlecode.dex2jar.tools.BaksmaliBaseDexExceptionHandler
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.plugins.Plugin
 import com.telestream.providers.ProviderManager
@@ -121,6 +120,32 @@ object CloudStreamPluginLoader {
     private val pluginLocks = ConcurrentHashMap<String, Any>()
 
     /**
+     * Bumped whenever the DEX -> JAR translation changes in a way that affects the produced bytes.
+     *
+     * Translated JARs are cached on disk and only rebuilt when the `.cs3` is newer, so without this a
+     * user would keep running a JAR built by an older translation forever - for example one whose
+     * untranslatable methods still carry the multi-kilobyte stack-trace stub. The version is stored
+     * next to the JAR and a mismatch forces a rebuild.
+     */
+    private const val TRANSLATION_VERSION = 2
+
+    private fun translationVersionFile(safeName: String) = File(cacheDir, "$safeName.jar.version")
+
+    private fun isTranslationStale(safeName: String, jarFile: File, cs3File: File): Boolean {
+        if (!jarFile.exists() || jarFile.length() == 0L) return true
+        if (jarFile.lastModified() < cs3File.lastModified()) return true
+        val recorded = translationVersionFile(safeName).takeIf { it.exists() }?.readText()?.trim()
+        if (recorded != TRANSLATION_VERSION.toString()) {
+            logger.info(
+                "Rebuilding ${jarFile.name}: cached translation version " +
+                    "${recorded ?: "none"} != current $TRANSLATION_VERSION"
+            )
+            return true
+        }
+        return false
+    }
+
+    /**
      * Download (if needed), translate DEX to JAR, load into JVM, and return the registered MainAPI.
      */
     fun loadPlugin(metadata: PluginMetadata): MainAPI? {
@@ -164,8 +189,9 @@ object CloudStreamPluginLoader {
                     logger.info("Downloaded ${metadata.name} (${cs3File.length()} bytes)")
                 }
 
-                // 2. Convert DEX to JAR if jar does not exist or cs3 is newer
-                if (!jarFile.exists() || jarFile.length() == 0L || jarFile.lastModified() < cs3File.lastModified()) {
+                // 2. Convert DEX to JAR if the JAR is missing, older than the .cs3, or was produced
+                //    by a different translation version
+                if (isTranslationStale(safeName, jarFile, cs3File)) {
                     logger.info("Translating DEX to JAR for ${metadata.name}...")
                     val zip = ZipFile(cs3File)
                     val dexEntry = zip.getEntry("classes.dex") ?: run {
@@ -177,17 +203,7 @@ object CloudStreamPluginLoader {
                     zip.close()
 
                     val reader = MultiDexFileReader.open(dexBytes)
-                    val handler = object : BaksmaliBaseDexExceptionHandler() {
-                        override fun handleMethodTranslateException(
-                            method: com.googlecode.d2j.Method?,
-                            node: com.googlecode.d2j.node.DexMethodNode?,
-                            mv: org.objectweb.asm.MethodVisitor?,
-                            e: Exception?
-                        ) {
-                            logger.warn("Method translation issue in ${method?.owner}.${method?.name}: ${e?.javaClass?.simpleName} - ${e?.message}")
-                            super.handleMethodTranslateException(method, node, mv, e)
-                        }
-                    }
+                    val handler = CompactDexExceptionHandler()
                     val tempJar = File(jarFile.parentFile, "${jarFile.name}.tmp")
                     if (tempJar.exists()) tempJar.delete()
                     try {
@@ -212,7 +228,28 @@ object CloudStreamPluginLoader {
                         throw t
                     }
 
+                    // Report translation gaps once, here, where we still know the plugin name and can
+                    // say something useful. Surfacing them at call time instead just produces an
+                    // anonymous "RuntimeException: d2j fail translate" from deep inside the plugin.
+                    if (handler.oversizedMethods.isNotEmpty()) {
+                        logger.warn(
+                            "${handler.oversizedMethods.size} method(s) in ${metadata.name} exceed the JVM " +
+                                "65KB method limit and will fail if called: " +
+                                handler.oversizedMethods.joinToString(", ")
+                        )
+                    }
+                    if (handler.otherFailures.isNotEmpty()) {
+                        logger.warn(
+                            "${handler.otherFailures.size} method(s) in ${metadata.name} could not be " +
+                                "translated: " + handler.otherFailures.joinToString("; ")
+                        )
+                    }
+
                     logger.info("Generated JAR for ${metadata.name} (${jarFile.length()} bytes)")
+
+                    // Only stamp the version once the JAR is in place, so a failed translation is
+                    // retried on the next start rather than being cached as "current".
+                    translationVersionFile(safeName).writeText(TRANSLATION_VERSION.toString())
                 }
 
                 // 3. Read manifest.json from cs3
