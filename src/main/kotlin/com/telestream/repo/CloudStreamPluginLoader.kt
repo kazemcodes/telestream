@@ -77,24 +77,25 @@ class CloudStreamClassLoader(
                         if (owner == "kotlinx/serialization/SerializersKt" && methodName == "serializer") {
                             fixedName = "serializerOrNull"
                         }
-                        // Intercept kotlin/text/StringsKt calls to null-tolerant PluginBytecodeHelper
-                        // to prevent NullPointerExceptions when upstream JSON returns null for non-null String fields (e.g. video.released in SuperStream)
-                        if (owner.startsWith("kotlin/text/StringsKt")) {
-                            when (methodName) {
-                                "split\$default", "split", "contains\$default", "contains",
-                                "startsWith\$default", "substringAfterLast\$default",
-                                "substringBefore\$default", "substringAfter\$default",
-                                "replace\$default", "toIntOrNull" -> {
-                                    super.visitMethodInsn(
-                                        Opcodes.INVOKESTATIC,
-                                        "com/telestream/repo/PluginBytecodeHelper",
-                                        methodName,
-                                        descriptor,
-                                        false
-                                    )
-                                    return
-                                }
-                            }
+                        // Intercept kotlin/text/StringsKt calls to the null-tolerant PluginBytecodeHelper
+                        // so an upstream API returning null for a field the plugin models as non-null
+                        // (e.g. video.released in SuperStream) can never raise a NullPointerException.
+                        //
+                        // The redirect is keyed on the exact `name+descriptor`: the stdlib has many
+                        // overloads of these names and PluginBytecodeHelper only implements the ones
+                        // listed in SUPPORTED_SIGNATURES. Anything else keeps pointing at the real
+                        // stdlib, which makes a NoSuchMethodError from this rewrite impossible.
+                        if (owner.startsWith("kotlin/text/StringsKt") &&
+                            (methodName + descriptor) in PluginBytecodeHelper.SUPPORTED_SIGNATURES
+                        ) {
+                            super.visitMethodInsn(
+                                Opcodes.INVOKESTATIC,
+                                "com/telestream/repo/PluginBytecodeHelper",
+                                methodName,
+                                descriptor,
+                                false
+                            )
+                            return
                         }
                         super.visitMethodInsn(opcode, owner, fixedName, descriptor, isInterface)
                     }
